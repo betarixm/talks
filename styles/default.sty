@@ -1,0 +1,397 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{styles/default}[2026/05/30 Minimal black beamer theme]
+
+% Resolve assets relative to this style file, independent of the directory
+% containing the talk or the working directory used by the build command.
+\edef\blackfontpath{\CurrentFilePath/../fonts/}
+
+\RequirePackage{etoolbox}
+\RequirePackage{fontspec}
+\RequirePackage{tikz}
+\usetikzlibrary{calc,fadings} % toc measurements and fade-out masks
+\RequirePackage{calc}
+\RequirePackage{colortbl} % \rowcolor for \blackheaderrow
+\RequirePackage{adjustbox} % shrink an overlong footer title to fit its column
+
+% Unicode-engine setup: load Inter from the project-local fonts directory.
+\defaultfontfeatures{Renderer=HarfBuzz, Ligatures=TeX, Scale=MatchLowercase}
+\newcommand{\blacksetinterfromdir}{%
+  \setmainfont{Inter}[
+    Path=\blackfontpath,
+    Extension=.otf,
+    UprightFont=*-Regular,
+    ItalicFont=*-Italic,
+    BoldFont=*-Bold,
+    BoldItalicFont=*-BoldItalic
+  ]%
+  \setsansfont{Inter}[
+    Path=\blackfontpath,
+    Extension=.otf,
+    UprightFont=*-Regular,
+    ItalicFont=*-Italic,
+    BoldFont=*-Bold,
+    BoldItalicFont=*-BoldItalic
+  ]%
+  \renewcommand{\familydefault}{\sfdefault}%
+}
+\IfFileExists{\blackfontpath Inter-Regular.otf}{%
+  \blacksetinterfromdir
+}{%
+  \PackageWarningNoLine{styles/default}{Inter-Regular.otf not found; using default fonts}%
+}
+
+% ---------------------------------------------------------------------------
+% Palette (variables.css)
+% ---------------------------------------------------------------------------
+\definecolor{blackPrimary}{HTML}{1C1D1F}   % --color-light-text-primary
+\definecolor{blackSecondary}{HTML}{666666} % --color-light-text-secondary
+\definecolor{blackBg}{HTML}{FFFFFF}        % --color-light-background-base
+\definecolor{blackDark}{HTML}{27282C}      % --color-dark-background-base (rules, th)
+\definecolor{blackAltRow}{gray}{0.975}     % rgba(0,0,0,0.025)
+
+% ---------------------------------------------------------------------------
+% Relative type scale (variables.css --font-size-* ratios over --font-size-base)
+% Fonts are kept as the beamer default sans, only the proportions are matched.
+% ---------------------------------------------------------------------------
+\newlength{\blackbasefs}\setlength{\blackbasefs}{11pt} % --font-size-base
+% Line heights as integer percents (\dimexpr needs integer multipliers).
+\newcommand{\blacklhbase}{145}     % softened --line-height-base (1.8)
+\newcommand{\blacklhheadings}{125} % --line-height-headings
+
+% Optical left-edge correction for the large bold frametitle (see the
+% frametitle template below). Recomputed from \blackbasefs in \blacksetupfonts
+% so it tracks \setblackbasefs.
+\newlength{\blacktitleoptical}
+
+% \blackscaledfont{<size ratio>}{<line-height percent>} -> \fontsize ... \selectfont
+% \fontsize wants unit-less pt numbers, so compute lengths and strip the unit.
+\newlength{\blacktmpa}\newlength{\blacktmpb}
+\makeatletter
+\newcommand{\blackscaledfont}[2]{%
+  \setlength{\blacktmpa}{#1\blackbasefs}%
+  \setlength{\blacktmpb}{\dimexpr#1\blackbasefs*#2/100\relax}%
+\fontsize{\strip@pt\blacktmpa}{\strip@pt\blacktmpb}\selectfont}
+\makeatother
+
+% Recompute every theme font from \blackbasefs (call again after \setblackbasefs)
+\newcommand{\blacksetupfonts}{%
+  \setbeamerfont{normal text}{size={\blackscaledfont{1.0}{\blacklhbase}}}%        base
+  \setbeamerfont{frametitle}{size={\blackscaledfont{1.5}{\blacklhheadings}},series=\bfseries}% 2xl
+  \setbeamerfont{headline}{size={\blackscaledfont{0.75}{110}}}%                   xs
+  \setbeamerfont{footline}{size={\blackscaledfont{0.6}{100}}}%                    3xs
+  \setbeamerfont{title on titlepage}{size={\blackscaledfont{1.5}{\blacklhheadings}},series=\bfseries}% 2xl
+  \setbeamerfont{subtitle on titlepage}{size={\blackscaledfont{0.75}{\blacklhbase}}}% xs
+  \setbeamerfont{meta on titlepage}{size={\blackscaledfont{0.75}{120}}}%          xs
+  \setbeamerfont{section in toc}{size={\blackscaledfont{1.25}{\blacklhheadings}},series=\bfseries}% ~xl
+  \setbeamerfont{subsection in toc}{size={\blackscaledfont{0.75}{120}}}%          xs
+  \setbeamerfont{itemize/enumerate body}{size={\blackscaledfont{1.0}{\blacklhbase}}}%
+  \setbeamerfont{itemize/enumerate subbody}{size={\blackscaledfont{0.94}{\blacklhbase}}}%
+  \setbeamerfont{itemize/enumerate subsubbody}{size={\blackscaledfont{0.84}{\blacklhbase}}}%
+  % title is 1.5x base; its surplus left side-bearing measures ~0.03 of that.
+  \setlength{\blacktitleoptical}{\dimexpr 1.5\blackbasefs*3/100\relax}%
+}
+\newcommand{\setblackbasefs}[1]{\setlength{\blackbasefs}{#1}\blacksetupfonts}
+
+% ---------------------------------------------------------------------------
+% Colors
+% ---------------------------------------------------------------------------
+\mode<presentation>{
+  \setbeamercolor{normal text}{fg=blackPrimary,bg=blackBg}
+  \setbeamercolor{background canvas}{bg=blackBg}
+  \setbeamercolor{title}{fg=blackPrimary}
+  \setbeamercolor{frametitle}{fg=blackPrimary,bg=blackBg}
+  \setbeamercolor{subtitle}{fg=blackSecondary}
+  \setbeamercolor{section in toc}{fg=blackPrimary}
+  \setbeamercolor{subsection in toc}{fg=blackSecondary}
+  \setbeamercolor{item}{fg=blackPrimary}
+  \setbeamercolor{subitem}{fg=blackPrimary!78}
+  \setbeamercolor{itemize/enumerate subbody}{fg=blackPrimary!78}
+  \setbeamercolor{itemize/enumerate subsubbody}{fg=blackPrimary!70}
+  \setbeamercolor{headline}{fg=blackSecondary,bg=blackBg}
+  \setbeamercolor{footline}{fg=blackSecondary,bg=blackBg}
+}
+
+\setbeamertemplate{navigation symbols}{}
+
+% ---------------------------------------------------------------------------
+% Geometry (variables.css spacing)
+% Slide is 1920x1080; lengths are expressed as fractions of the page.
+% ---------------------------------------------------------------------------
+% Lengths (not macros) so they can be scaled, e.g. 0.55\blackvpad.
+\newlength{\blackhpad}\setlength{\blackhpad}{0.03125\paperwidth}  % 60 / 1920
+\newlength{\blackvpad}\setlength{\blackvpad}{0.05556\paperheight} % 60 / 1080
+\newcommand{\setblackhpad}[1]{%
+  \setlength{\blackhpad}{#1}%
+  \setbeamersize{text margin left=#1,text margin right=#1}%
+}
+\setbeamersize{text margin left=\blackhpad,text margin right=\blackhpad}
+
+\newcommand{\blackrule}{0.6pt}                 % 1px hairline
+\newcommand{\blacktocrowgap}{0.75em}           % spacing-li-base around toc rule
+\newcommand{\blackheadgap}{0.6em}              % heading-4: section label -> title
+\newcommand{\blacktocleftfrac}{0.42}           % width of the section (left) column in toc
+% Top-align the subsection (right) column with the section title: the first
+% subsection of each section is raised by this much to meet the title's top.
+\newif\ifblacktocfirstsub
+\newlength{\blacktocsubrise}\setlength{\blacktocsubrise}{1.45em}
+
+% ---------------------------------------------------------------------------
+% Brand logo (footer left). Each talk supplies its own image; an empty value
+% leaves the brand column blank.
+% ---------------------------------------------------------------------------
+\newcommand{\blackbrandlogo}{}
+\newlength{\blackbrandlogoheight}
+\newcommand{\blacklogoVAdjust}{0pt}
+\newcommand{\brandlogo}[1]{\renewcommand{\blackbrandlogo}{#1}}
+\newcommand{\brandlogoheight}[1]{\setlength{\blackbrandlogoheight}{#1}}
+\newcommand{\brandlogovadjust}[1]{\renewcommand{\blacklogoVAdjust}{#1}}
+
+\newcommand{\blackrenderbrandlogo}{%
+  \ifx\blackbrandlogo\empty\else
+    \includegraphics[height=\blackbrandlogoheight]{\blackbrandlogo}%
+  \fi%
+}
+
+% ---------------------------------------------------------------------------
+% Title page  (cover.vue: grid rows 4fr / 2fr / 1fr)
+%   title sits low (end of the 4fr region), subtitle just below,
+%   author / institute / date pinned to the bottom as three stacked lines.
+% ---------------------------------------------------------------------------
+\setbeamertemplate{title page}{%
+  \vbox to \textheight{%
+    \vskip0pt plus 4fil
+    {\usebeamerfont{title on titlepage}\usebeamercolor[fg]{title}\inserttitle\par}%
+    \ifx\insertsubtitle\empty\else
+    \vskip\blackheadgap
+    {\usebeamerfont{subtitle on titlepage}\usebeamercolor[fg]{subtitle}\insertsubtitle\par}%
+    \fi
+    \vskip0pt plus 3fil
+    {\usebeamerfont{meta on titlepage}%
+      \insertauthor\par
+      \insertinstitute\par
+    \insertdate\par}%
+    \vskip\blackvpad
+  }%
+}
+
+% ---------------------------------------------------------------------------
+% Headline = small light section label (slide-header.vue: the parent section)
+% Shown on content slides only. The cover (frame 1) gets no headline.
+% ---------------------------------------------------------------------------
+\setbeamertemplate{headline}{%
+  \ifnum\value{framenumber}>0\relax
+  \ifx\insertsectionhead\empty\else
+  \leavevmode
+  \begin{beamercolorbox}[wd=\paperwidth,leftskip=\blackhpad,rightskip=\blackhpad,sep=0pt]{headline}%
+    \vskip\blackvpad
+    {\usebeamerfont{headline}\insertsectionhead\par}%
+  \end{beamercolorbox}%
+  \fi
+  \fi
+}
+
+% ---------------------------------------------------------------------------
+% Frame title = large bold h1, with breathing room below (heading-1 spacing)
+% Left edge is \blackhpad (same as headline / body / footer) minus a small
+% \blacktitleoptical, so the big bold glyph's wider side-bearing does not push
+% the title visibly right of the rest; right edge stays at \blackhpad.
+% ---------------------------------------------------------------------------
+\setbeamertemplate{frametitle}{%
+  \ifx\insertsectionhead\empty\vskip\blackvpad\fi % top pad when no headline label
+  \begin{beamercolorbox}[wd=\paperwidth,leftskip=\dimexpr\blackhpad-\blacktitleoptical\relax,rightskip=\blackhpad,sep=0pt]{frametitle}%
+    {\usebeamerfont{frametitle}\insertframetitle\par}%
+  \end{beamercolorbox}%
+  \vskip-0.4em
+}
+
+% Frames whose body starts with a figure/box (instead of text) hug the title,
+% because a tall box sits top-aligned while a text/itemize body starts at a
+% baseline below the title. Begin such bodies with \blackfiguretop to restore
+% the same breathing room a text body would have.
+\newlength{\blackfiguretopskip}\setlength{\blackfiguretopskip}{1em}
+\newcommand{\blackfiguretop}{\vspace*{\blackfiguretopskip}}
+
+% ---------------------------------------------------------------------------
+% Footer (slide-footer.vue): thin top rule, then brand | title | page.
+%   widths ~16% / grow / 16%; cover shows only the brand.
+% ---------------------------------------------------------------------------
+\newcommand{\blackfooterrule}{%
+\hbox to \paperwidth{\color{blackDark}\leaders\hrule height \blackrule\hfill}}
+
+\newcommand{\blackfooterbrand}{%
+\raisebox{\blacklogoVAdjust}{\blackrenderbrandlogo}}
+
+\setbeamertemplate{footline}{%
+  \leavevmode
+  \blackfooterrule
+  \vskip0.55\blackvpad
+  \hbox{%
+    \begin{beamercolorbox}[wd=0.16\paperwidth,leftskip=\blackhpad,rightskip=0pt,sep=0pt]{footline}%
+      \usebeamerfont{footline}\blackfooterbrand
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=0.68\paperwidth,center,sep=0pt]{footline}%
+      \usebeamerfont{footline}%
+      \ifnum\value{framenumber}>1\relax
+      \adjustbox{max width=0.60\paperwidth,valign=c}{\insertshorttitle}%
+      \fi
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=0.16\paperwidth,leftskip=0pt,rightskip=\blackhpad,sep=0pt]{footline}%
+      \usebeamerfont{footline}%
+      % \hfill (not \raggedleft, which would reset rightskip and clip the digit)
+      \ifnum\value{framenumber}>1\relax\hfill\insertframenumber{} / \inserttotalframenumber\fi
+    \end{beamercolorbox}%
+  }%
+  \vskip0.45\blackvpad
+}
+
+% ---------------------------------------------------------------------------
+% Table of contents (toc.vue): each section is a two-column row divided by a
+%   top hairline -- the bold section title sits in a fixed-width left column,
+%   its subsections stack in the right column.
+% ---------------------------------------------------------------------------
+\setbeamertemplate{section in toc}{%
+  \par\vskip\blacktocrowgap
+  {\color{blackPrimary}\hrule height \blackrule}%
+  \vskip\blacktocrowgap
+  \parindent=0pt\leftskip=0pt\relax
+  \noindent
+  \blacktoccurmark % drop a centering anchor on the current section (scroll mode only)
+  {\usebeamerfont{section in toc}\usebeamercolor[fg]{section in toc}%
+  \inserttocsectionnumber.\hskip0.5em\inserttocsection}\par
+  \global\blacktocfirstsubtrue
+}
+\setbeamertemplate{subsection in toc}{%
+  % Raise the first subsection up beside the section title (top-aligned columns);
+  % later subsections flow normally.
+  \ifblacktocfirstsub \vskip-\blacktocsubrise \global\blacktocfirstsubfalse \fi
+  \parindent=0pt\leftskip=\blacktocleftfrac\linewidth\relax
+  {\usebeamerfont{subsection in toc}\usebeamercolor[fg]{subsection in toc}%
+    % \par inside the group so the line uses the subsection font's (tight) line
+    % height, not normal text's; the visible row gap is then just \vskip below.
+  \textbullet\hskip0.5em\inserttocsubsection\par}%
+  \vskip0.5em % match the horizontal item gap (\hskip0.5em) for an even grid
+}
+\setbeamertemplate{subsubsection in toc}{%
+  \leavevmode\hskip4.4em
+  {\usebeamerfont{subsection in toc}\usebeamercolor[fg]{subsection in toc}%
+  \inserttocsubsubsection\par}%
+}
+
+% Agenda / section-divider frame: the contents with no title area at all
+%   (no frametitle, no section-label headline) -- just top padding, then toc.
+%   #1 = options passed to \tableofcontents (e.g. currentsection,...).
+\newcommand{\tocframe}[1]{%
+  \begingroup
+  \setbeamertemplate{headline}{}%
+  \setbeamertemplate{frametitle}{}%
+  \begin{frame}
+    \tableofcontents[#1]%
+  \end{frame}%
+  \endgroup
+}
+
+% ---------------------------------------------------------------------------
+% Scrolling section-divider frame: like \tocframe, but the *current*
+% (highlighted) section is pinned to the vertical center of the slide and the
+% toc is allowed to overflow past it -- the overflow dissolves into the white
+% background through fade-out gradients at the top and bottom. Use this for the
+% \AtBeginSection divider when the full toc (current section + its subsections)
+% would otherwise spill off the bottom edge.
+%
+% Mechanism: the toc is typeset into a box that carries two remember-picture
+% anchors -- one at its top (blacktoctop) and one on the current section row
+% (blacktoccur). The box is then placed by a tikz overlay so that blacktoccur
+% lands on the page center. Because the offset between the two anchors is fixed
+% by the toc's internal layout, the value is stable from the first run; only the
+% usual "rerun for cross-references" extra XeLaTeX pass is needed.
+% ---------------------------------------------------------------------------
+\newif\ifblacktocscroll
+\newsavebox{\blacktocsbox}
+
+% Fade band height (top and bottom), and the bottom reserve kept solid white so
+% the toc never bleeds into the footer.
+\newlength{\blacktocfadeh}\setlength{\blacktocfadeh}{0.18\paperheight}        % top fade band
+\newlength{\blacktocfadehbot}\setlength{\blacktocfadehbot}{0.26\paperheight}  % bottom fade band (taller; more overflow to dissolve)
+\newlength{\blacktocbotreserve}\setlength{\blacktocbotreserve}{\dimexpr\blackvpad+0.03\paperheight\relax}
+% Vertical resting place of the current (highlighted) section, measured from the
+% top edge of the slide. Smaller => higher up. (Center would be 0.5\paperheight.)
+\newlength{\blacktoccurtop}\setlength{\blacktoccurtop}{0.22\paperheight}
+
+% White masks: opaque where they hide content, transparent where the toc shows.
+\tikzfading[name=blacktopfade,top color=transparent!0,bottom color=transparent!100]
+\tikzfading[name=blackbotfade,top color=transparent!100,bottom color=transparent!0]
+
+% Dropped by the section in toc template; emits a zero-size overlay anchor only
+% in scroll mode and only on the row whose number matches the current section.
+\newcommand{\blacktoccurmark}{%
+  \ifblacktocscroll
+  \edef\blacktoccurnum{\inserttocsectionnumber}%
+  \ifx\blacktoccurnum\empty\else
+  \ifnum\blacktoccurnum=\value{section}\relax
+  \tikz[remember picture,overlay]{\coordinate(blacktoccur);}%
+  \fi
+  \fi
+  \fi
+}
+
+\newcommand{\sectionframe}[1]{%
+  \begingroup
+  \blacktocscrolltrue
+  \setbeamertemplate{headline}{}%
+  \setbeamertemplate{frametitle}{}%
+  \begin{frame}
+    % Typeset the toc into a box carrying a top anchor; the current section row
+    % gets its own anchor via \blacktoccurmark inside the section in toc template.
+    \sbox\blacktocsbox{%
+      \begin{minipage}[t]{\dimexpr\paperwidth-2\blackhpad\relax}%
+        \tikz[remember picture,overlay]{\coordinate(blacktoctop);\coordinate(blacktoccur);}%
+        \tableofcontents[#1]%
+      \end{minipage}%
+    }%
+    \begin{tikzpicture}[remember picture,overlay]
+      % Place the box so the current-section anchor rests \blacktoccurtop below
+      % the top edge. \y1-\y2 is the fixed vertical gap from the box top to the
+      % current section row.
+      \path let \p1=(blacktoctop), \p2=(blacktoccur) in
+      node[anchor=north west,inner sep=0pt]
+      at ([shift={(\blackhpad,{-\blacktoccurtop+\y1-\y2})}]current page.north west)
+      {\usebox\blacktocsbox};
+      % Top fade: white, opaque at the very top dissolving downward.
+      \fill[white,path fading=blacktopfade]
+      (current page.north west) rectangle ([yshift=-\blacktocfadeh]current page.north east);
+      % Bottom: a solid white footer reserve, then a fade dissolving upward.
+      \fill[white]
+      (current page.south west) rectangle ([yshift=\blacktocbotreserve]current page.south east);
+      \fill[white,path fading=blackbotfade]
+      ([yshift=\blacktocbotreserve]current page.south west)
+      rectangle ([yshift=\dimexpr\blacktocbotreserve+\blacktocfadehbot\relax]current page.south east);
+    \end{tikzpicture}
+  \end{frame}%
+  \endgroup
+}
+
+% ---------------------------------------------------------------------------
+% Lists (lists.css): disc / circle / square; generous item spacing.
+% ---------------------------------------------------------------------------
+\setbeamertemplate{itemize item}{\raise0.15ex\hbox{\footnotesize$\bullet$}}
+\setbeamertemplate{itemize subitem}{\raise0.15ex\hbox{\scriptsize$\circ$}}
+\setbeamertemplate{itemize subsubitem}{\raise0.2ex\hbox{\tiny$\blacksquare$}}
+\setbeamertemplate{enumerate item}{\insertenumlabel.}
+\setbeamertemplate{enumerate subitem}{\insertsubenumlabel.}
+
+\setlength{\leftmargini}{1.6em}
+\setlength{\leftmarginii}{1.85em}
+\setlength{\leftmarginiii}{2.2em}
+\setlength{\itemsep}{0.4em}
+
+% ---------------------------------------------------------------------------
+% Tables (table.css): roomier rows; helpers for a dark header and zebra rows.
+%   Wrap a table body in \blackheaderrow / use \rowcolors via the helpers below.
+% ---------------------------------------------------------------------------
+\AtBeginEnvironment{tabular}{\renewcommand{\arraystretch}{1.25}}
+% \blackheaderrow{...&...&...} -> dark band, white text (place as first table row)
+\newcommand{\blackheaderrow}[1]{%
+\rowcolor{blackDark}\color{white}#1}
+
+\blacksetupfonts
+\mode<all>
