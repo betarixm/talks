@@ -30,6 +30,10 @@ for talk-specific needs so other presentations retain their styling.
   Section dividers highlight the current section and fade surrounding ones.
 - Preserve the closing disclaimer's top title/subtitle, bottom explanation,
   hairline, and three-column contact footer. Keep it as the final slide.
+- Preserve the intentional spoken ending: the narrative conclusion says
+  thank you, then the final slide gives the full disclaimer narration.
+  The user explicitly confirmed this sequence; do not shorten or move the
+  final narration to eliminate the second ending.
 - When adding or reordering sections, update the Korean narration selected
   by `\AtBeginSection` and its `\ifcase` mapping in `gpu-101.tex`.
 - Give each content frame one main point. Prefer photos, assets, and diagrams

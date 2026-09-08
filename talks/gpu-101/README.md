@@ -14,4 +14,5 @@ GPU의 등장 배경부터 CUDA 실행 모델과 메모리 계층까지 다루�
 
 - [슬라이드](gpu-101.pdf) · [발표자용 PDF](gpu-101-notes.pdf)
 - [원고](gpu-101.md) · [Beamer 소스](gpu-101.tex)
+- [스토리 검수 및 반영 내역](gpu-101-story-review.md)
 - [이미지 출처](assets/README.md) · [편집 지침](AGENTS.md)
