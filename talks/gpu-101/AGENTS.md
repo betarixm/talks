@@ -175,6 +175,11 @@ compensate for an overcrowded layout.
   binary compatibility or equal performance. Do not treat every TPU or NPU
   generation as the same architecture. Label the WSE-3 figures as a 2024
   example and scope MemoryX weight streaming to training.
+- Keep PyTorch/XLA lazy graph capture separate from its XRT-to-PJRT runtime
+  migration. StableHLO is a versioned program representation; PJRT is the
+  device API for buffers, compilation and execution. They are complementary
+  boundaries, not replacement generations. Retain internal HLO and qualify
+  artifact compatibility, custom calls, and historical execution paths.
 - Distinguish LLM training state, serving KV state, and communication by
   parallelism strategy. Qualify serving bottlenecks by phase and batching;
   NVLink scale-up domains can extend beyond one server.

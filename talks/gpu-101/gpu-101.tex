@@ -1453,21 +1453,22 @@ __global__ void add(
 \section*{Appendix}
 \begin{frame}[label=appendix-index]{Beyond one GPU: choose a question}
   \begin{diagram}{4.6}
-    \foreach \yy in {4.5,3.38,2.26,1.14,.02} \draw[line] (0,\yy)--(14.7,\yy);
-    \node[anchor=west,font=\small\bfseries] at (0,3.94) {Other accelerators};
-    \node[anchor=west,font=\small,text=work,align=left] at (5.15,3.94)
-      {\hyperlink{app-amd}{AMD + ROCm}\quad\hyperlink{app-hip}{HIP}\quad\hyperlink{app-tpu}{TPU}\\[.12cm]
+    \foreach \yy in {4.55,3.15,2.10,1.05,.00} \draw[line] (0,\yy)--(14.7,\yy);
+    \node[anchor=west,font=\small\bfseries] at (0,3.85) {Other accelerators};
+    \node[anchor=west,font=\small,text=work,align=left] at (5.15,3.85)
+      {\hyperlink{app-amd}{AMD + ROCm}\quad\hyperlink{app-hip}{HIP}\quad\hyperlink{app-tpu}{TPU}\\[.06cm]
+       \hyperlink{app-torch-xla}{Torch/XLA}\quad\hyperlink{app-pjrt}{PJRT}\quad\hyperlink{app-stablehlo}{StableHLO}\\[.06cm]
        \hyperlink{app-npu}{NPU startups}\quad\hyperlink{app-cerebras}{Cerebras}};
-    \node[anchor=west,font=\small\bfseries] at (0,2.82) {LLMs and the data center};
-    \node[anchor=west,font=\small,text=work,align=left] at (5.15,2.82)
+    \node[anchor=west,font=\small\bfseries] at (0,2.625) {LLMs and the data center};
+    \node[anchor=west,font=\small,text=work,align=left] at (5.15,2.625)
       {\hyperlink{app-training}{Training}\quad\hyperlink{app-serving}{Serving}\quad\hyperlink{app-parallel}{Parallelism}\\[.12cm]
        \hyperlink{app-datacenter}{Reliability, power, cooling}\quad\hyperlink{app-networking}{NVIDIA networking}};
-    \node[anchor=west,font=\small\bfseries] at (0,1.7) {Bits, bandwidth, packaging};
-    \node[anchor=west,font=\small,text=work,align=left] at (5.15,1.7)
+    \node[anchor=west,font=\small\bfseries] at (0,1.575) {Bits, bandwidth, packaging};
+    \node[anchor=west,font=\small,text=work,align=left] at (5.15,1.575)
       {\hyperlink{app-formats}{Number formats}\quad\hyperlink{app-lowprecision}{Mixed precision}\\[.12cm]
        \hyperlink{app-hbm}{HBM}\quad\hyperlink{app-fa}{FlashAttention}\quad\hyperlink{app-packaging}{TSMC packaging}};
-    \node[anchor=west,font=\small\bfseries] at (0,.58) {Linux and deployment};
-    \node[anchor=west,font=\small,text=work,align=left] at (5.15,.58)
+    \node[anchor=west,font=\small\bfseries] at (0,.525) {Linux and deployment};
+    \node[anchor=west,font=\small,text=work,align=left] at (5.15,.525)
       {\hyperlink{app-linux}{Torvalds and NVIDIA}\\[.12cm]
        \hyperlink{app-container-image}{Portable GPU images}\quad\hyperlink{app-container-driver}{Containers and the host driver}};
   \end{diagram}
@@ -1572,6 +1573,76 @@ __global__ void add(
   \note{TPU, Tensor Processing Unit은 Google이 머신러닝을 위해 설계한 전용 프로세서입니다. 서비스 추론의 지연시간과 전력 비용을 줄이는 데서 출발해, 학습 처리량과 대규모 연결로 확장했습니다. 행렬 실행부에서는 곱셈·누산 회로 사이로 값을 흘려보내며 재사용합니다. 물론 메모리와 다른 종류의 연산부도 필요합니다.
 
   왼쪽은 JAX의 대표 경로입니다. 배열 계산과 분할 방식을 XLA가 컴파일해 TPU와 여러 칩 사이에 배치합니다. PyTorch 연동도 있고 XLA는 GPU도 지원합니다. 차이는 특정 언어의 독점이 아니라 출발점입니다. 그래픽에서 범용 커널로 확장한 GPU에 비해 TPU는 텐서 계산·컴파일러·분산 시스템을 중심으로 발전했습니다.}
+\end{frame}
+
+\begin{frame}[label=app-torch-xla]{PyTorch/XLA first turns tensor work into a graph}
+  \begin{diagram}{4.45}
+    \node[anchor=west,font=\scriptsize\bfseries,text=muted] at (0,4.08) {CLASSIC LAZY-TENSOR PATH · BEFORE AND AFTER THE RUNTIME CHANGE};
+    \node[workbox,minimum width=3.2cm,minimum height=1.0cm,font=\small] (py) at (1.9,3.02) {PyTorch operations\\{\scriptsize\ttfamily y = relu(x @ w + b)}};
+    \node[workbox,minimum width=3.1cm,minimum height=1.0cm,font=\small] (gr) at (6.15,3.02) {PyTorch/XLA graph\\matmul $\to$ add $\to$ relu};
+    \node[plainbox,minimum width=3.8cm,minimum height=1.0cm,font=\small] (co) at (12.1,3.02) {XLA compiler\\fusion · layout · buffer planning};
+    \draw[flow] (py)--(gr);
+    \draw[flow] (gr)--node[above,lab] {lower / compile} (co);
+    \node[plainbox,minimum width=3.8cm,minimum height=.7cm,font=\small] (run) at (12.1,1.62) {Runtime: submit executable};
+    \draw[flow] (co)--(run);
+    \node[hwbox,minimum width=3.8cm,minimum height=.7cm,font=\small] (tpu) at (12.1,.37) {TPU: matrix + vector units};
+    \draw[flow] (run)--(tpu);
+    \node[membox,minimum width=2.8cm,minimum height=.7cm,font=\small] (buf) at (6.2,.37) {Device buffers};
+    \draw[flow,<->,draw=mem] (buf)--(tpu);
+    \node[anchor=west,align=left,font=\small] at (.1,1.25) {Graph boundaries trigger execution.\\Reuse a compiled graph when compatible.\\New shapes or graphs can require compilation.};
+  \end{diagram}
+  \takeaway{The tensor API looks familiar; the compiler chooses how that work fits the TPU.}
+  \credit{}{\href{https://docs.pytorch.org/xla/release/r2.4/index.html}{PyTorch/XLA 2.4 · XLA Tensor Deep Dive} · classic path, not every PyTorch/TPU execution mode}
+  \note{PyTorch를 쓰면서도 TPU를 사용할 수 있게 한 연결이 PyTorch/XLA입니다. 여기서는 전통적인 lazy tensor 경로를 보겠습니다. 행렬 곱, 덧셈, 활성화 함수를 호출하면 먼저 계산 그래프에 기록하고, 그래프 경계나 결과가 필요한 시점에 컴파일한 일을 실행합니다. XLA는 여러 연산의 결합과 데이터 배치, 버퍼 사용을 결정해 TPU의 행렬·벡터 실행부에 맞춥니다.
+
+  같은 조건의 그래프는 컴파일 결과를 재사용하지만, 모양이나 그래프가 달라지면 새 컴파일 비용이 생길 수 있습니다. 이것은 TPU에서 Python의 모든 호출이 그대로 하나의 하드웨어 명령이 된다는 뜻이 아닙니다. 다음의 PJRT 전환은 이 그래프 계산 자체를 처음 만든 사건이 아니라, 컴파일과 실행을 장치에 요청하는 연결을 바꾼 사건입니다. 또한 2026년에는 TorchTPU라는 더 네이티브한 통합 방향도 발표됐으므로, 이 그림을 모든 시대의 PyTorch·TPU 실행 방식으로 일반화하지 않겠습니다.}
+\end{frame}
+
+\begin{frame}[label=app-pjrt]{PJRT replaced the device-runtime connection}
+  \begin{diagram}{4.45}
+    \node[anchor=west,font=\small\bfseries,text=muted] at (.1,4.05) {BEFORE · XRT};
+    \node[anchor=west,font=\small\bfseries,text=work] at (8.0,4.05) {AFTER · PJRT};
+    \draw[line] (7.25,.35)--(7.25,4.15);
+    \foreach \xx/\prefix in {3.25/old,11.15/new} {
+      \node[workbox,minimum width=5.6cm,minimum height=.64cm,font=\small] (\prefix front) at (\xx,3.35) {PyTorch/XLA};
+      \node[hwbox,minimum width=5.6cm,minimum height=.62cm,font=\small] (\prefix chip) at (\xx,.63) {TPU devices + memory};
+    }
+    \node[plainbox,minimum width=5.6cm,minimum height=.96cm,font=\small] (oldrt) at (3.25,1.92) {TensorFlow-based XRT service\\XLA compilation + device execution};
+    \draw[flow] (oldfront)--node[right,lab] {gRPC requests} (oldrt);
+    \draw[flow] (oldrt)--(oldchip);
+    \node[plainbox,minimum width=5.6cm,minimum height=.96cm,font=\small] (newrt) at (11.15,1.92) {TPU PJRT implementation · \texttt{libtpu}\\XLA compilation + device execution};
+    \draw[flow] (newfront)--node[right,lab] {PJRT API / plugin} (newrt);
+    \draw[flow] (newrt)--(newchip);
+    \node[lab,align=center] at (7.35,-.03) {PyTorch/XLA 2.0: default when no XRT configuration · 2.1: stable · JAX also uses PJRT};
+  \end{diagram}
+  \takeaway{Less runtime plumbing; a shared API for devices, buffers, compilation, and execution.}
+  \credit{}{\href{https://docs.pytorch.org/xla/release/r2.4/runtime.html}{PyTorch/XLA · XRT to PJRT, 2023 milestones} · \href{https://openxla.org/xla/pjrt}{OpenXLA · uniform device API} · schematic runtime boundaries}
+  \note{이전에는 PyTorch/XLA가 TensorFlow 기반 XRT 서비스에 gRPC로 요청을 보내 TPU의 컴파일과 실행을 사용했습니다. 이 별도 서비스 경계는 설정과 요청 처리 비용을 만들었습니다. PJRT로 옮기면서 JAX도 사용하는 장치 API를 통해 TPU용 libtpu 구현에 접근하게 됐습니다. PyTorch/XLA 2.0에서는 기존 XRT 설정이 없을 때 기본 선택이 됐고, 2.1에서 안정화됐습니다.
+
+  PJRT는 장치 목록과 메모리 버퍼, 컴파일 요청, 실행과 완료를 다루는 인터페이스입니다. XLA 컴파일러를 없앤 것도, 새 TPU 연산기를 만든 것도 아닙니다. 공급사는 이 인터페이스 뒤에 장치별 구현을 연결할 수 있습니다. gRPC 경로의 부담과 실행 설정은 줄지만, 여러 호스트의 데이터 교환과 동기화가 사라지는 것은 아닙니다. 여기까지는 장치에 어떻게 일을 요청하는가의 변화입니다. 다음에는 그 요청에 담을 계산을 어떤 언어로 표현하는가를 보겠습니다.}
+\end{frame}
+
+\begin{frame}[label=app-stablehlo]{StableHLO stabilizes the program, PJRT runs it}
+  \begin{diagram}{4.45}
+    \node[anchor=west,font=\scriptsize\bfseries,text=muted] at (0,4.08) {BEFORE: HLO / MHLO WERE NOT A VERSIONED PORTABLE CONTRACT};
+    \node[workbox,minimum width=3.1cm,minimum height=.9cm,font=\small] (front) at (1.9,3.0) {PyTorch/XLA export\\JAX / TensorFlow};
+    \node[workbox,minimum width=3.0cm,minimum height=.9cm,font=\small] (ir) at (6.3,3.0) {StableHLO program\\ops + versions};
+    \node[plainbox,minimum width=3.6cm,minimum height=.9cm,font=\small] (compiler) at (12.0,3.0) {XLA compiler\\internal HLO $\to$ target code};
+    \draw[flow] (front)--node[above,yshift=.53cm,lab] {export / lower} (ir);
+    \draw[flow] (ir)--node[above,lab] {program input} (compiler);
+    \node[plainbox,minimum width=3.6cm,minimum height=.7cm,font=\small] (exec) at (12.0,1.57) {Loaded executable + buffers};
+    \node[hwbox,minimum width=3.6cm,minimum height=.7cm,font=\small] (chip) at (12.0,.32) {TPU hardware};
+    \draw[flow] (compiler)--(exec); \draw[flow] (exec)--(chip);
+    \draw[rounded corners=3pt,draw=line,dashed] (9.6,1.0) rectangle (14.35,3.65);
+    \node[anchor=west,font=\small\bfseries,text=work] (client) at (.15,1.65) {Framework runtime};
+    \draw[flow,draw=work] (client.east)--node[above,lab] {PJRT: compile / load / execute} (9.6,1.65);
+    \node[anchor=west,align=left,font=\scriptsize,text=muted] at (.15,.47) {StableHLO v1.0: H1 2024 · portable serialized artifacts\\Compiler support, custom calls, and target performance still matter.};
+  \end{diagram}
+  \takeaway{StableHLO defines what to compute; PJRT provides the device API used to compile and run it.}
+  \credit{}{\href{https://openxla.org/stablehlo}{StableHLO} · \href{https://openxla.org/stablehlo/compatibility}{compatibility} · \href{https://docs.pytorch.org/xla/release/r2.6/features/stablehlo.html}{PyTorch export} · \href{https://openxla.org/xla/pjrt/cpp_api_overview}{PJRT API} · selected TPU path; other compilers can consume StableHLO}
+  \note{XLA의 계산 표현인 HLO와 그 MLIR 표현인 MHLO는 있었지만, 오래 저장해 다른 버전의 도구와 교환할 안정적인 계약은 별도 문제였습니다. StableHLO는 연산의 의미를 명세하고 버전과 직렬화 호환성을 마련한 계산 표현입니다. 2024년 상반기에 1.0이 나왔습니다. PyTorch export와 PyTorch/XLA로 만든 표현을 전달할 수 있고, JAX와 TensorFlow도 생산자가 될 수 있습니다. XLA 외에 이를 받는 컴파일러도 있습니다.
+
+  파란 윗길은 무엇을 계산할지 담은 프로그램이고, 아래 화살표는 컴파일·버퍼·실행을 요청하는 PJRT API입니다. 둘은 앞뒤 세대의 대체재가 아니라 서로 다른 경계입니다. XLA 내부에서는 여전히 HLO로 최적화하고 목표 장치용 코드를 만듭니다. StableHLO 파일 자체가 TPU 기계어나 모델 가중치 전체인 것은 아닙니다. 호환성 보장도 정해진 직렬화와 범위에 적용되며, 지원 연산과 custom call, 장치별 성능까지 자동으로 같아지는 것은 아닙니다. 다른 가속기를 붙일 때도 이런 계산 표현과 실행 구현 양쪽이 필요합니다.}
 \end{frame}
 
 \begin{frame}[label=app-npu]{NPU startups compete on the complete inference service}
