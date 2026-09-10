@@ -71,6 +71,14 @@ NVIDIA Terms of Service를 확인한다.
 
 - Block scheduling: [NVIDIA CUDA Programming Guide, Thread block scheduling](https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/programming-model.html#thread-block-scheduling)
 - Warp width versus execution width: Stanford CS149, Fall 2025, slide 45
+- Volta SM resource grouping: [NVIDIA Tesla V100 GPU Architecture whitepaper](https://images.nvidia.com/content/volta-architecture/pdf/volta-architecture-whitepaper.pdf),
+  printed pp. 12–13 (PDF pp. 17–18), Figure 5. `gpu-101.tex`의 TikZ 도식은
+  원본의 네 processing partition을 네 열로 펼쳐 그렸다. 구획별 scheduler,
+  64 KB register file, FP32 유닛 16개, load/store 유닛 8개의 소속과
+  SM 공통 L1 data cache/shared memory의 범위를 유지한다. INT32·FP64·Tensor
+  자원은 이름만 표시하고, instruction cache·dispatch·SFU·texture 세부는
+  생략했다. 실제 다이의 면적 비율이나 배선 배치를 재현한 그림은 아니다.
+  외부 이미지를 복제하거나 crop하지 않았다. 출처 확인: 2026-09-10.
 
 ## Stanford CS149 lecture crops
 

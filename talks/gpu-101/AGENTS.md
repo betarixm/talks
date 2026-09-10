@@ -8,6 +8,16 @@ user's current instructions when they change the choices recorded here.
 - Read `gpu-101.md` and the relevant frames in `gpu-101.tex` before changing
   the narrative. Preserve the manuscript's progression from graphics to
   general-purpose compute, the execution engine, and the `A + B` example.
+- Build the execution-engine story from warps to the resources they need:
+  register files, execution state, schedulers, and execution units. Then
+  propose one giant GPU-wide pool, show its data and control connection
+  costs, and introduce SMs as local groups of those resources. Omit the
+  standalone warp-divergence explanation.
+- Define a warp consistently as a hardware-managed group of 32 logical
+  threads. Introduce required roles before choosing resource counts and
+  connections. Label scheduler output as selected instructions and use
+  repeated cells for execution-unit groups so a category does not look like
+  one physical unit.
 - Preserve the requested extensions: host-to-device input transfer,
   cache/register access, optional shared-memory staging, contents, section
   dividers, and the closing disclaimer.

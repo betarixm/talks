@@ -377,7 +377,7 @@ output = base * light
 \section{The execution engine}
 \subsection{Warps and SIMT}
 % Source manuscript §6.
-\begin{frame}{A warp groups 32 logical threads}
+\begin{frame}{Hardware groups 32 logical threads into a warp}
   \begin{diagram}{4.5}
     \node[workbox,minimum width=5cm,minimum height=.65cm] (inst) at (7.4,4.02)
       {One instruction: \texttt{ADD}};
@@ -394,102 +394,181 @@ output = base * light
     \node[anchor=west,font=\small] at (.2,.25)
       {\textbf{SIMT}\quad Single Instruction, Multiple Threads};
   \end{diagram}
-  \takeaway{A warp describes grouped execution; it is not a 32-core component.}
+  \takeaway{A warp groups thread execution; execution units do the work.}
   \credit{https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/programming-model.html}{NVIDIA CUDA Programming Guide · Warps and SIMT}
   \note{여러 데이터에 대해 덧셈을 해야 한다고 해봅시다. 각 계산의 입력은 다르지만, 지금 해야 할 명령은 모두 덧셈입니다. 하나의 명령으로 여러 데이터의 계산을 함께 진행하면 명령을 전달하고 제어하는 비용을 나눌 수 있습니다.
 
-  프로그램의 개별 실행을 thread라고 합니다. NVIDIA CUDA GPU가 이 실행들을 함께 관리하는 warp의 폭은 32입니다. 프로그램에서 정하는 더 큰 작업 묶음인 block 안에서, 연속된 번호의 thread를 32개씩 묶습니다. block을 어떻게 구성하는지는 뒤의 코드 예제에서 보겠습니다.
+  프로그램의 개별 논리적 실행을 thread라고 합니다. Warp는 하드웨어가 실행을 묶어 관리하는 32개 논리적 thread의 묶음입니다. 여기서 보는 NVIDIA CUDA GPU는 프로그램에서 정하는 더 큰 작업 묶음인 block 안에서, 연속된 번호의 thread를 32개씩 묶습니다. block을 어떻게 구성하는지는 뒤의 코드 예제에서 보겠습니다.
 
-  파란 상자는 논리적인 실행을 나타냅니다. warp가 물리적 연산기 32개로 된 부품이거나 thread가 연산기 하나를 영구적으로 차지한다는 뜻은 아닙니다. 프로그래머는 thread마다 할 일을 쓰고, 하드웨어는 같은 명령을 묶어 처리합니다. 이것이 SIMT, Single Instruction, Multiple Threads입니다.}
+  파란 칸은 각 thread의 실행을 나타내며, 특정 연산기와 일대일로 대응하지는 않습니다. 프로그래머는 thread마다 할 일을 쓰고, 하드웨어는 그 thread들의 명령을 묶어 처리합니다. 이것이 SIMT, Single Instruction, Multiple Threads입니다. 조건에 따라 일부 thread만 명령에 참여할 수도 있습니다. 그러면 이 실행들을 진행하려면 하드웨어가 무엇을 기억하고 어떤 일을 해야 할까요?}
 \end{frame}
 
-\begin{frame}{Same program does not always mean the same path}
-  \begin{diagram}{4.4}
-    \node[anchor=west,font=\small\ttfamily] at (0,4.05)
-      {if (lane < 16) \{ path\_A(); \} else \{ path\_B(); \}};
-    \node[lab,anchor=west] at (0,3.2) {Lane};
-    \foreach \i in {0,...,31} {
-      \node[font=\fontsize{6.5}{8}\selectfont,text=muted] at (2.55+\i*.38,3.2) {\i};
-      \ifnum\i<16
-        \fill[work] (2.38+\i*.38,2.12) rectangle ++(.33,.49);
-        \fill[blackPrimary!8] (2.38+\i*.38,1.05) rectangle ++(.33,.49);
-      \else
-        \fill[blackPrimary!8] (2.38+\i*.38,2.12) rectangle ++(.33,.49);
-        \fill[work] (2.38+\i*.38,1.05) rectangle ++(.33,.49);
-      \fi
-    }
-    \node[anchor=west,font=\small\bfseries] at (0,2.36) {Path A};
-    \node[anchor=west,font=\small\bfseries] at (0,1.29) {Path B};
-    \fill[work] (2.4,.25) rectangle ++(.25,.25);
-    \node[lab,anchor=west] at (2.85,.375) {active};
-    \fill[blackPrimary!8] (5.1,.25) rectangle ++(.25,.25);
-    \node[lab,anchor=west] at (5.55,.375) {masked for this path};
-  \end{diagram}
-  \takeaway{Divergent paths are processed with different active threads.}
-  \credit{https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/programming-model.html}{NVIDIA CUDA Programming Guide · Warps and SIMT · conceptual mask illustration}
-  \note{{\small\color{muted}[보충 메모: Volta 이후의 Independent Thread Scheduling은 thread별 실행 상태를 지원한다. 이 그림은 경로별 참여 관계를 설명하며 실제 명령 발행 순서를 정하지 않는다.]}
-
-  warp 안에서 0번부터 31번까지의 논리적인 thread 자리를 lane이라고 부릅니다. 화면의 조건문은 lane 번호가 16보다 작은 thread를 A 경로로, 나머지를 B 경로로 보냅니다. 같은 프로그램을 실행해도 입력이나 조건에 따라 이렇게 경로가 갈릴 수 있습니다.
-
-  A 경로의 명령에는 앞의 16개 thread가 참여하고, B 경로의 명령에는 뒤의 16개가 참여합니다. 파란 칸이 각 경로의 활성 thread이며, 이 그림은 정확한 사이클표가 아닙니다. 이것이 warp divergence입니다. 같은 warp 안에서 실행 경로가 비슷하면 한 명령에 함께 참여할 thread가 많아져 자원을 효율적으로 활용하기 쉽습니다.}
-\end{frame}
-
-% Source manuscript §7. Explicitly a design thought experiment.
+% Source manuscript §7. Build up the resources before proposing an organization.
 \subsection{SMs and GPU organization}
-\begin{frame}{Arithmetic needs state, and state has to live somewhere}
-  \begin{diagram}{4.4}
-    \node[lab,anchor=west] at (0,4.15) {A DESIGN THOUGHT EXPERIMENT};
-    \node[membox,minimum width=3.45cm,minimum height=1.5cm] (state) at (1.8,2.7)
-      {\textbf{Intermediate values}\\[.12cm]{\small + execution state}};
-    \node[hwbox,minimum width=3.45cm,minimum height=1.5cm] (alu) at (12.85,2.7)
-      {\textbf{Arithmetic units}\\[.12cm]{\small somewhere on the chip}};
-    \draw[flow,draw=mem] (state.east) to[bend left=12]
-      node[above,lab,text=mem] {operands must travel too} (alu.west);
-    \draw[flow,draw=mem] (alu.west) to[bend left=12]
-      node[below,lab,text=mem] {results must be kept for later} (state.east);
-    \draw[line] (0,1.25)--(14.7,1.25);
-    \node[anchor=west,font=\small] at (0,.65)
-      {Store values.\qquad Track progress.\qquad Choose the next instruction.};
+\begin{frame}{Each thread needs values that survive an instruction}
+  \begin{diagram}{4.5}
+    \node[lab,anchor=west] at (.1,4.15) {ONE WARP · SAME STEPS, DIFFERENT VALUES};
+    \node[workbox,minimum width=3.9cm,minimum height=.7cm,font=\small] (read) at (2.1,3.3) {Read \texttt{a} and \texttt{b}};
+    \node[workbox,minimum width=3.9cm,minimum height=.7cm,font=\small] (add) at (2.1,2.1) {Compute \texttt{s = a + b}};
+    \node[workbox,minimum width=3.9cm,minimum height=.7cm,font=\small] (use) at (2.1,.9) {Use \texttt{s} in the next step};
+    \draw[flow] (read)--(add); \draw[flow] (add)--(use);
+    \draw[membox] (6.1,.35) rectangle (14.65,4.45);
+    \node[anchor=west,font=\small\bfseries,text=mem] at (6.4,4.05) {REGISTER FILE};
+    \node[lab,anchor=west] at (6.4,3.5) {Thread};
+    \foreach \x/\label in {9.1/a,11.1/b,13.1/s}
+      \node[lab] at (\x,3.5) {\texttt{\label}};
+    \foreach \y/\t in {2.85/0,2.05/1,.85/31} {
+      \node[font=\small,anchor=west] at (6.45,\y) {\t};
+      \foreach \x/\v in {9.1/a,11.1/b,13.1/s}
+        \node[membox,fill=white,minimum width=1.55cm,minimum height=.55cm,inner sep=2pt,font=\small]
+          at (\x,\y) {\texttt{\v[\t]}};
+    }
+    \node[lab] at (10.55,1.45) {$\cdots$};
+    \draw[flow,<->,draw=mem] (add.east)--node[above,lab,text=mem] {values} (6.05,2.1);
   \end{diagram}
-  \takeaway{Adding execution units also creates a data-movement problem.}
-  \note{경로가 갈리는 경우까지 보았으니, 이제 이 warp들을 실제로 처리할 기계를 생각해봅시다. 연산기를 칩 안에 잔뜩 넣으면 충분할까요? 프로그램은 덧셈 한 번으로 끝나지 않습니다. 값을 읽고, 곱하고, 더하고, 조건을 검사하려면 중간값과 실행 상태를 기억할 자리, 다음 명령을 고르는 장치도 있어야 합니다.
+  \takeaway{A register file holds working values; each thread has its own registers.}
+  \credit{https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/programming-model.html}{NVIDIA CUDA Programming Guide · GPU Hardware Model · conceptual register layout}
+  \note{이제 이 thread들의 실행에 필요한 하드웨어를 생각해봅시다. 먼저 덧셈에 쓸 값을 읽었다고 하면, 덧셈 명령이 그 값을 사용할 때까지 어디엔가 보관해야 합니다. 덧셈이 끝나도 다음 계산에서 결과를 다시 쓸 수 있으니, 명령 사이에 값을 남겨둘 자리가 필요합니다.
 
-  모든 warp를 한곳에서 관리하고 칩 전체의 빈 연산기로 보내는 구조를 상상해봅시다. 값은 왼쪽에 있고 빈 연산기는 오른쪽에 있다면 필요한 값도 이동해야 합니다. 결과를 다시 가져오거나 멀리서 접근할 연결망도 필요합니다. 연산기를 늘릴 때에는 계산에 필요한 상태를 어디에 두고 어떻게 옮길지도 함께 설계해야 합니다.}
+  이런 현재 작업값을 담는 저장 공간이 레지스터입니다. 오른쪽처럼 많은 레지스터를 모아 놓은 하드웨어 저장 구조를 레지스터 파일이라고 부릅니다. 디스크에 저장하는 파일이라는 뜻은 아닙니다. 그림의 가로줄마다 서로 다른 thread의 입력 a, b와 결과 s가 있습니다. 저장 장치는 함께 구성해도, 프로그램에서 각 thread가 사용하는 레지스터 값은 자기 것입니다.
+
+  이제 값을 보관할 곳은 생겼습니다. 그런데 여러 warp를 실행하고 있다면, 어떤 실행이 어디까지 왔고 다음에 누구의 명령을 처리해야 하는지도 알아야 하지 않을까요?}
 \end{frame}
 
-% Source manuscript §8.
-\begin{frame}{An SM keeps execution and its working state close}
-  \begin{diagram}{4.65}
-    \draw[hwbox] (0,.08) rectangle (10.15,4.6);
-    \node[anchor=west,font=\small\bfseries,text=hw] at (.28,4.27)
-      {SM · Streaming Multiprocessor};
-    \node[workbox,minimum width=3.3cm,minimum height=.8cm,font=\small] (resident) at (2.05,3.35)
-      {Resident warps};
-    \node[hwbox,minimum width=5.5cm,minimum height=.8cm,font=\small] (scheduler) at (6.9,3.35)
-      {Warp schedulers};
-    \draw[flow] (resident.east)--(scheduler.west);
-    \node[membox,minimum width=9.35cm,minimum height=.6cm,font=\small] (registers) at (5.07,2.4)
-      {Registers · values for resident threads};
-    \node[hwbox,minimum width=4.5cm,minimum height=.7cm,font=\small] (math) at (2.7,1.47)
-      {Arithmetic units};
-    \node[hwbox,minimum width=4.5cm,minimum height=.7cm,font=\small] (lsu) at (7.47,1.47)
-      {Load / store units};
-    \node[membox,minimum width=9.35cm,minimum height=.55cm,font=\small] at (5.07,.56)
-      {Shared memory / L1 cache};
-    \node[anchor=north west,text width=3.9cm,font=\small,align=left] at (10.8,4.1)
-      {\textbf{Manage many warps.}\\[.22cm]
-       Keep their state nearby.\\[.38cm]
-       Feed ready instructions to execution units.};
-    \node[anchor=south west,lab,text width=3.85cm,align=left] at (10.8,.25)
-      {Conceptual organization.\\Internal partitions vary by architecture.};
+\begin{frame}{Track progress, choose an instruction, execute it}
+  \begin{diagram}{4.55}
+    \node[font=\scriptsize\bfseries,anchor=west,text=muted] at (0,4.25) {TRACK};
+    \node[font=\scriptsize\bfseries,anchor=west,text=muted] at (5.25,4.25) {CHOOSE};
+    \node[font=\scriptsize\bfseries,anchor=west,text=muted] at (10.6,4.25) {EXECUTE};
+    \draw[membox] (0,.8) rectangle (4.5,3.6);
+    \node[font=\small\bfseries,anchor=west,text=mem] at (.22,3.24) {Execution state};
+    \draw[memBorder] (.2,2.9)--(4.3,2.9);
+    \foreach \y/\id/\state in {2.55/0/{Waiting for a load},1.85/1/{ADD ready},1.15/2/{STORE ready}} {
+      \node[anchor=west,font=\small,text=work] at (.22,\y) {Warp \id};
+      \node[anchor=west,font=\scriptsize] at (1.75,\y) {\state};
+    }
+    \node[hwbox,minimum width=3.2cm,minimum height=1.05cm,font=\small] (sched) at (6.85,2.2)
+      {\textbf{Warp scheduler}\\[.12cm]{\scriptsize Select a ready instruction}};
+    \draw[flow] (4.5,2.2)--(sched.west);
+    \foreach \y/\label/\desc in {3.0/{Arithmetic units}/{Add, multiply, \ldots},1.15/{Load / store units}/{Read and write memory}} {
+      \node[anchor=west,font=\small\bfseries] at (10.65,\y+.55) {\label};
+      \foreach \x in {11.05,12.1,13.15}
+        \node[hwbox,minimum width=.8cm,minimum height=.55cm,inner sep=2pt,font=\scriptsize] at (\x,\y) {unit};
+      \node[font=\small,text=hw] at (14.25,\y) {$\cdots$};
+      \node[anchor=west,lab] at (10.65,\y-.53) {\desc};
+    }
+    \draw[flow] (sched.east)--(10.0,2.2)|-(10.6,3.0);
+    \draw[flow] (10.0,2.2)|-(10.6,1.15);
+    \node[lab,align=center] at (9.25,2.72) {Selected\\instruction};
+    \node[lab,anchor=west] at (0,.25) {Required roles; unit counts and connections are illustrative.};
   \end{diagram}
-  \takeaway{Warp = grouped work.\qquad SM = the hardware that executes it.}
-  \credit{https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/programming-model.html}{NVIDIA CUDA Programming Guide · GPU Hardware Model · original schematic}
-  \note{그렇다면 서로 자주 주고받는 것들을 가까이 묶어봅시다. 연산기 옆에 각 thread의 현재 작업값을 보관할 레지스터를 두고, 실행을 관리할 스케줄러와 메모리 읽기·쓰기 장치도 함께 둡니다. NVIDIA GPU에서 이런 역할을 하는 단위가 SM, Streaming Multiprocessor입니다. 아래쪽 shared memory와 L1 캐시는 SM 가까이에서 데이터를 사용할 수 있게 해주는 저장 자원입니다.
+  \takeaway{Track each warp's state. Issue selected instructions to execution units.}
+  \credit{https://docs.nvidia.com/cuda/archive/12.8.1/volta-tuning-guide/index.html}{NVIDIA Volta Tuning Guide · Instruction scheduling · conceptual roles}
+  \note{왼쪽 표는 하드웨어가 warp별로 추적하는 실행 상태의 예입니다. warp 0은 메모리에서 읽는 값을 기다리고, warp 1은 덧셈을 할 준비가 됐고, warp 2는 결과를 쓸 준비가 됐습니다. 레지스터에 담은 작업값과 함께 이런 진행 상황과 준비 여부도 기억해야 합니다.
 
-  이 SM에 실행 상태와 자원을 배정받아 머무는 warp를 resident warp라고 합니다. SM은 여러 warp의 상태를 보관하고, 스케줄러는 그중 입력값과 실행 자원이 준비된 명령을 골라 발행합니다. 머무는 warp 수와 한순간에 명령을 처리하는 연산기 수는 다른 숫자입니다.
+  가운데 warp 스케줄러는 이 상태를 참조해, 필요한 값과 실행 자원이 준비된 명령을 골라 발행합니다. 발행은 화살표에 적힌 선택한 명령을 실행 장치로 보내는 것입니다. 입력값을 기다리는 warp가 있으면 다른 warp의 준비된 명령을 고를 수 있습니다.
 
-  실제 SM의 내부 구획은 아키텍처에 따라 달라지며, 여기서는 여러 스케줄러와 자원을 묶어 그렸습니다. 핵심은 하나의 SM이 여러 warp의 상태를 가까이 두고 실행을 진행시킨다는 것입니다.}
+  오른쪽 위의 산술 연산 유닛들은 덧셈과 곱셈을 하고, 아래의 load/store 유닛들은 메모리 읽기와 쓰기를 처리합니다. 초록 칸과 생략 기호는 여러 유닛을 나타내며, 개수는 예시입니다. 여기까지는 값 보관, 상태 추적, 명령 선택과 실행이라는 역할을 모았습니다. 이제 각 자원을 몇 개 두고 어떻게 연결할지 정해봅시다.}
+\end{frame}
+
+% A deliberately centralized proposal, not a description of an actual GPU.
+\begin{frame}{Why not build one giant execution engine?}
+  \begin{diagram}{4.55}
+    \draw[hwbox] (0,.15) rectangle (14.7,4.5);
+    \node[anchor=west,font=\scriptsize\bfseries,text=hw] at (.3,4.15)
+      {ONE POSSIBLE ORGANIZATION · A SINGLE GPU-WIDE POOL};
+    \foreach \y/\id in {3.35/0,2.4/1,1.45/N}
+      \node[workbox,minimum width=1.85cm,minimum height=.6cm,font=\small] (w\id) at (1.35,\y) {Warp \id};
+    \node[smalllab] at (1.35,.7) {Many resident warps};
+    \node[membox,minimum width=3.8cm,minimum height=.7cm,font=\small] (state) at (4.9,3.3) {All execution state};
+    \node[hwbox,minimum width=3.8cm,minimum height=.8cm,font=\small] (sched) at (4.9,1.95) {One warp scheduler};
+    \foreach \y/\id in {3.35/0,2.4/1,1.45/N}
+      \draw[draw=muted,line width=.8pt] (w\id.east)--(2.65,\y);
+    \draw[draw=muted,line width=.8pt] (2.65,1.45)--(2.65,3.35);
+    \draw[flow] (2.65,3.3)--(state.west);
+    \draw[flow] (state)--(sched);
+    \node[membox,minimum width=6.1cm,minimum height=.7cm,font=\small] (rf) at (11.15,3.3) {One giant register file};
+    \foreach \x/\name/\label in {8.85/a/Arithmetic,11.15/b/Arithmetic,13.45/c/{Load / store}} {
+      \node[hwbox,minimum width=1.95cm,minimum height=.8cm,font=\scriptsize] (\name) at (\x,1.95) {\label};
+      \draw[flow,<->,draw=mem] (\x,2.91)--(\name.north);
+      \draw[flow] (\x,.75)--(\name.south);
+    }
+    \draw[line,line width=.8pt] (4.9,.75)--(13.45,.75);
+    \draw[flow] (sched.south)--(4.9,.75);
+    \node[smalllab] at (10.95,.38) {A large pool of execution units};
+  \end{diagram}
+  \takeaway{One place for values. One place to choose work. Many units to execute it.}
+  \note{이제 필요한 역할을 실제 부품의 개수와 연결 방식으로 옮겨보겠습니다. 한 가지 안으로 GPU 전체를 하나의 큰 실행 엔진으로 만든다고 상상해봅시다. 많은 warp의 실행 상태를 가운데에서 모두 추적하고, 각 thread의 값은 오른쪽의 거대한 레지스터 파일 하나에 넣습니다. 스케줄러는 하나를 두어 그중 준비된 명령을 골라 아래의 많은 실행 유닛으로 보냅니다.
+
+  이렇게 실행 상태와 자원을 배정받아 현재 하드웨어에 머무는 warp를 resident warp라고 합니다. 제출한 모든 작업이 한꺼번에 올라온다는 뜻은 아닙니다. 지금은 올라온 warp들을 한곳에서 관리하는 설계를 생각하는 것입니다. 레지스터 파일 하나를 같이 사용해도 각 thread의 레지스터 값은 여전히 따로 배정됩니다.
+
+  얼핏 보면 충분해 보입니다. 일을 더 많이 하려면 레지스터 파일을 키우고, 더 많은 warp와 연산기를 넣으면 되니까요. 그런데 스케줄러가 멀리 떨어진 연산기를 골랐다면, 명령만 보내면 될까요?}
+\end{frame}
+
+\begin{frame}{The values and control signals must travel too}
+  \begin{diagram}{4.5}
+    \node[lab,anchor=west] at (0,4.25) {THE SAME CENTRALIZED DESIGN · NOW CONSIDER THE CONNECTIONS};
+    \node[membox,minimum width=4.2cm,minimum height=1.25cm,font=\small] (rf) at (2.2,3.1)
+      {\textbf{Giant register file}\\[.12cm]{\scriptsize Values for all resident threads}};
+    \node[hwbox,minimum width=4.2cm,minimum height=1.25cm,font=\small] (units) at (12.45,3.1)
+      {\textbf{Execution units}\\[.12cm]Across the chip};
+    \draw[flow,draw=mem] (rf.east) to[bend left=13]
+      node[above,lab,text=mem] {operands} (units.west);
+    \draw[flow,draw=mem] (units.west) to[bend left=13]
+      node[below,lab,text=mem] {results} (rf.east);
+    \node[hwbox,minimum width=4.2cm,minimum height=.8cm,font=\small] (sched) at (2.2,.9) {One warp scheduler};
+    \draw[flow] (sched.east)--(12.45,.9)--(units.south);
+    \node[lab,fill=white,inner sep=3pt] at (8.1,.9) {issue instructions across the chip};
+    \node[lab,anchor=west] at (0,1.75) {Track readiness across the same large pool.};
+  \end{diagram}
+  \takeaway{More units also need more register bandwidth and a larger control network.}
+  \note{스케줄러가 칩 반대편의 빈 연산기를 골랐다고 해봅시다. 명령만 도착한다고 계산할 수는 없습니다. 레지스터 파일에 있는 입력값도 그곳까지 가야 합니다. 계산이 끝나면 결과를 보관할 자리로 돌려보내 다음 명령이 사용할 수 있게 해야 합니다. 위쪽의 주황색 화살표가 그 왕복입니다.
+
+  연산기를 더 붙여 여러 명령을 처리하려면, 레지스터 파일도 그만큼 많은 값을 읽고 쓸 수 있어야 하고 그 값을 운반할 연결망도 필요합니다. 아래쪽 스케줄러도 넓은 범위의 준비 상태를 확인하고 여러 실행 유닛에 명령을 전달해야 합니다. 단순히 저장 용량과 연산기 개수만 늘려서는 끝나지 않는 것입니다.
+
+  이런 중앙 설계가 불가능하다는 뜻은 아닙니다. 커질수록 함께 해결해야 할 접근 대역폭과 연결 비용이 있다는 뜻입니다. 그렇다면 서로 자주 값을 주고받는 레지스터와 연산기, 이 실행들을 관리하는 장치를 가까이 묶고, 그 묶음을 여러 개 만들면 어떨까요?}
+\end{frame}
+
+% Source manuscript §8. Resource grouping follows Volta whitepaper Figure 5.
+% Four processing partitions are unfolded into columns for the 16:9 slide.
+% This is a selected-resource schematic, not a physical die floorplan.
+\begin{frame}{An SM keeps execution and its working state close}
+  \begin{diagram}{4.8}
+    \draw[hwbox] (0,.1) rectangle (14.7,4.75);
+    \node[anchor=west,font=\small\bfseries,text=hw] at (.28,4.43)
+      {SM · Streaming Multiprocessor};
+    \node[anchor=east,lab] at (14.4,4.43) {V100 / Volta · selected resources};
+    \foreach \p in {0,...,3} {
+      \pgfmathsetmacro{\px}{.3+3.6*\p}
+      \pgfmathsetmacro{\cx}{\px+1.65}
+      \draw[hwbox,fill=white] (\px,1.02) rectangle (\px+3.3,4.05);
+      \node[font=\scriptsize\bfseries,text=muted] at (\cx,3.83) {Partition \p};
+      \node[hwbox,minimum width=2.95cm,minimum height=.37cm,inner sep=3pt,font=\scriptsize]
+        at (\cx,3.44) {Warp scheduler};
+      \node[membox,minimum width=2.95cm,minimum height=.4cm,inner sep=3pt,font=\scriptsize]
+        at (\cx,2.91) {Register file · 64 KB};
+      \node[font=\scriptsize\bfseries,text=hw] at (\cx,2.49) {16 FP32 units};
+      \foreach \col in {0,...,7} \foreach \row in {0,...,1}
+        \draw[hwBorder,fill=hw!35,line width=.5pt]
+          (\px+.2+\col*.37,2.2-\row*.18) rectangle ++(.3,.13);
+      \node[font=\fontsize{7.8}{9}\selectfont,text=muted] at (\cx,1.75)
+        {INT32 · FP64 · Tensor units};
+      \node[font=\scriptsize,text=hw] at (\cx,1.43) {Load / store units};
+      \foreach \col in {0,...,7}
+        \draw[hwBorder,fill=hw!18,line width=.5pt]
+          (\px+.2+\col*.37,1.13) rectangle ++(.3,.13);
+      \draw[line,line width=.7pt] (\cx,1.02)--(\cx,.78);
+    }
+    \node[membox,minimum width=14.1cm,minimum height=.46cm,inner sep=4pt,font=\small]
+      at (7.35,.52) {L1 data cache / shared memory · shared across the four partitions};
+  \end{diagram}
+  \takeaway{Each scheduler manages many warps using its partition's local resources.}
+  \credit{https://images.nvidia.com/content/volta-architecture/pdf/volta-architecture-whitepaper.pdf}{NVIDIA Volta whitepaper · Figure 5, pp. 12–13 · simplified and rearranged}
+  \note{앞에서 모은 자원들을 가까이 묶어 만든 실행 엔진이 SM, Streaming Multiprocessor입니다. 여기서는 V100의 Volta SM을 참고해 내부를 보겠습니다. 바깥 초록 테두리 전체가 SM 하나이고, 안에는 스케줄러와 레지스터 파일, 실행 유닛을 묶은 구획이 네 개 있습니다. 읽기 쉽게 네 열로 펼친 구성도입니다.
+
+  각 스케줄러는 자신이 담당하는 여러 warp의 준비된 명령을 골라 구획 안의 실행 자원에 공급합니다. 스케줄러 네 개가 warp 네 개를 뜻하지는 않습니다. 그 아래에는 thread들의 작업값을 담는 64 KB 레지스터 파일이 있고, 더 아래의 진한 초록 칸 16개는 FP32, 즉 32비트 부동소수점 연산 유닛입니다. 다른 종류의 산술 유닛들과 메모리 명령을 처리하는 load/store 유닛들도 같은 구획에 있습니다.
+
+  맨 아래 긴 L1 데이터 캐시와 shared memory는 네 구획이 함께 쓰는 SM의 저장 자원입니다. 명령 캐시와 명령 전달 회로 같은 세부는 생략했습니다. 핵심은 실제 SM 안에서도 자주 주고받는 자원을 가까이 묶어 실행을 관리한다는 점입니다. 이제 이런 SM을 여러 개 배치해 GPU 전체로 확장해보겠습니다.}
 \end{frame}
 
 % Source manuscript §9.
@@ -946,7 +1025,7 @@ add<<<1, 1>>>(device_a, device_b, device_c, 1);
   \credit{https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/programming-model.html}{NVIDIA CUDA Programming Guide · Partial warps · assumes no other GPU work}
   \note{지금까지는 백만 개 넘는 원소를 GPU에 맡겼습니다. 이제 자원을 얼마나 활용할 수 있는지 보려고, 원소 하나만 더하도록 일을 줄여보겠습니다. GPU에는 다른 작업이 없다고 하겠습니다. 코드의 마지막 인자도 원소 수 1로 바뀌었고, block 하나에 thread 하나를 넣었습니다.
 
-  이때도 실행을 관리할 warp가 생깁니다. 다만 실제 작업을 가진 thread는 lane 0 하나뿐이고 나머지 자리는 비어 있습니다. 이 block은 한 SM에 배치되고, 그 thread는 읽기와 덧셈, 쓰기에 필요한 자원을 차례로 사용합니다. 따라서 이 요청만으로는 warp의 나머지 자리와 다른 SM에 줄 일이 없습니다.}
+  이때도 실행을 관리할 warp가 생깁니다. warp 안에서 0번부터 31번까지의 논리적인 thread 자리를 lane이라고 부릅니다. 실제 작업을 가진 thread는 lane 0 하나뿐이고 나머지 자리는 비어 있습니다. 이 block은 한 SM에 배치되고, 그 thread는 읽기와 덧셈, 쓰기에 필요한 자원을 차례로 사용합니다. 따라서 이 요청만으로는 warp의 나머지 자리와 다른 SM에 줄 일이 없습니다.}
 \end{frame}
 
 \begin{frame}{More threads in one block still means one SM}
