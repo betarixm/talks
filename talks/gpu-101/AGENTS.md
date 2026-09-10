@@ -69,6 +69,11 @@ for talk-specific needs so other presentations retain their styling.
   graphics stages; connect shader instructions to program control and show
   registers beside repeated arithmetic units. Labels saying the hardware
   evolved are not a substitute for these diagrams.
+- Explain graphics stages with intermediate views of the same scene before
+  comparing fixed-function and programmable hardware. Keep each view aligned
+  with its stage; distinguish diagnostic views of vertices, fragment coverage,
+  and pre-visibility colors from the final framebuffer. A finished game image
+  alone does not explain what happens at each stage.
 - Compare separate pre-G80 vertex/pixel processor banks with repeated G80
   local processor groups, each with registers and shared memory, plus general
   load/store paths. Do not depict unification as one GPU-wide resource pool.

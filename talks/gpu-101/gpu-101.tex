@@ -221,6 +221,40 @@
   여기서 중요한 것은 단순히 숫자가 크다는 사실만이 아닙니다. 수면의 이 지점에서도 빛의 반사를 계산하고, 바로 옆 지점에서도 비슷한 계산을 합니다. 위치와 방향 같은 입력은 다르지만 적용할 계산법은 같을 수 있습니다. 서로 다른 위치에 대해 비슷한 계산을 아주 많이 한다는 성질이 GPU가 활용할 수 있는 병렬성의 출발점입니다.}
 \end{frame}
 
+% One scene makes each graphics pipeline stage visible.
+\begin{frame}{A scene becomes pixels, one stage at a time}
+  \begin{diagram}{4.9}
+    \node[anchor=west,font=\scriptsize\bfseries,text=muted] at (0,4.65)
+      {SAME MESH · SAME CAMERA · SAME DRAW ORDER};
+    \foreach \xx/\id/\label/\file/\caption in {
+      1.8/vertices/{1. Vertex transform\\+ lighting}/01-vertices/{Projected vertices\\and triangle edges},
+      5.5/fragments/{2. Rasterizer}/02-fragments/{Covered samples\\Darker = more fragments},
+      9.2/colors/{3. Texture + color\\calculation}/03-colors/{Computed RGB\\Depth / blending disabled},
+      12.9/output/{4. Depth test\\+ blending}/04-framebuffer/{Visible, blended pixels\\in the framebuffer}} {
+      \node[hwbox,minimum width=3.25cm,minimum height=.9cm,inner sep=3pt,font=\small]
+        (\id) at (\xx,3.99) {\label};
+      \node[inner sep=0pt] at (\xx,2.22)
+        {\includegraphics[width=3.35cm]{pipeline-examples/\file.png}};
+      \node[align=center,font=\fontsize{9}{12}\selectfont,text=muted] at (\xx,.59) {\caption};
+    }
+    \draw[flow] (vertices)--(fragments);
+    \draw[flow] (fragments)--(colors);
+    \draw[flow] (colors)--(output);
+    \node[lab,anchor=west] at (0,-.02)
+      {Original software-renderer diagnostics · logical stages; hardware may test depth early};
+  \end{diagram}
+  \takeaway{Vertices $\rightarrow$ fragments $\rightarrow$ fragment colors $\rightarrow$ framebuffer pixels.}
+  \credit{https://developer.nvidia.com/w/CgTutorial/cg_tutorial_chapter01.html}
+    {Pipeline reference: NVIDIA · The Cg Tutorial, Ch. 1 · original scene and diagnostic renders}
+  \note{같은 카메라로 큐브·바닥·반투명 파란 판을 봅니다. 중간 단계는 완성된 그림이 아니므로, 자체 소프트웨어 렌더러의 데이터를 눈에 보이게 표시했습니다.
+
+  첫 그림은 변환된 정점과 삼각형의 연결입니다. 선은 설명용 표시이며 GPU가 선 그림을 먼저 저장한다는 뜻은 아닙니다. Rasterizer는 삼각형이 덮는 샘플 위치에 프래그먼트를 만듭니다. 두 번째의 칸은 크게 표시했고, 진한 칸에는 여러 삼각형의 후보가 겹쳐 있습니다.
+
+  세 번째는 텍스처와 조명으로 계산한 색입니다. 깊이 검사와 혼합을 꺼서, 나중에 그린 판과 바닥이 앞의 큐브까지 덮습니다. 네 번째는 깊이 비교와 투명도 혼합을 적용한 결과입니다. 큐브가 앞에 보이고 파란 판 너머로 바닥이 비칩니다.
+
+  이것은 논리적 순서이며 실제 GPU는 깊이 검사를 일찍 하기도 합니다. 이제 정점과 표면색의 공식을 직접 바꾸고 싶다면 하드웨어가 어떻게 달라져야 할지 보겠습니다.}
+\end{frame}
+
 % Fixed-function constraints motivate programmable shading.
 \begin{frame}{Richer materials needed programmable hardware}
   \begin{diagram}{4.9}
@@ -252,7 +286,7 @@
   \end{diagram}
   \takeaway{Custom material formulas need both code and processors that can execute it.}
   \credit{https://developer.nvidia.com/w/CgTutorial/cg_tutorial_chapter01.html}{NVIDIA · The Cg Tutorial, Chapter 1 · simplified hardware stages and illustrative unit counts}
-  \note{윗줄은 고정 기능 GPU의 주요 처리 순서입니다. 정점의 위치와 조명을 계산하고, rasterizer가 삼각형을 화면의 조각으로 펼칩니다. 텍스처를 조합하고 안개 효과를 적용한 뒤, 깊이 검사와 색 혼합을 거쳐 프레임버퍼에 기록합니다. 초기 OpenGL은 조명과 재질 같은 설정으로 준비된 연산을 제어했습니다.
+  \note{방금 본 네 단계를 같은 위치에 놓고, 하드웨어가 어떻게 바뀌었는지 보겠습니다. 윗줄은 고정 기능 GPU의 주요 처리 순서입니다. 정점의 위치와 조명을 계산하고, rasterizer가 삼각형을 화면의 조각으로 펼칩니다. 텍스처를 조합하고 안개 효과를 적용한 뒤, 깊이 검사와 색 혼합을 거쳐 프레임버퍼에 기록합니다. 초기 OpenGL은 조명과 재질 같은 설정으로 준비된 연산을 제어했습니다.
 
   수면의 물결과 반사를 원하는 방식으로 계산하려면 이 공식 자체를 바꾸고 싶어집니다. 아랫줄은 같은 단계에 프로그램을 실행하는 프로세서가 들어온 모습입니다. 파란 정점·프래그먼트 코드가 초록 실행부에 명령으로 들어갑니다. ALU는 실제 산술 계산을 하는 회로이고, 칸 수는 예시입니다.
 

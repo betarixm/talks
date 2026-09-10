@@ -79,8 +79,9 @@ NVIDIA Terms of Service를 확인한다.
 
 ### Fixed-function graphics, shaders, and G80/CUDA
 
-다음 슬라이드는 외부 그림을 추출하지 않고 자체 TikZ 도식과 수면 셰이더
-의사코드를 사용한다. 고정 기능과 초기 프로그래머블 GPU의 같은 파이프라인
+하드웨어 파이프라인은 자체 TikZ 도식이며, 수면 셰이더는 자체 의사코드다.
+그 앞의 단계별 예시는 아래에 기록한 자체 소프트웨어 렌더러로 생성했다.
+고정 기능과 초기 프로그래머블 GPU의 같은 파이프라인
 단계를 나란히 놓고, shader 명령→제어 회로와 레지스터↔반복 연산기를 연결한다.
 G80 비교는 분리된 정점/픽셀 프로세서와 지역 레지스터·shared memory를 가진
 반복 프로세서 그룹의 차이를 보여준다. 셀 수와 연결은 개념 예이며, 실제
@@ -92,6 +93,17 @@ G80 비교는 분리된 정점/픽셀 프로세서와 지역 레지스터·share
 - [GeForce 8800 GPU Architecture Technical Brief](https://www.nvidia.com/content/PDF/Geforce_8800/GeForce_8800_GPU_Architecture_Technical_Brief.pdf), November 8, 2006, printed pp. 17–18, Figure 11; pp. 20–21, Figures 12–13; pp. 22–26, Figures 14–18. 분리된 vertex/pixel 처리 경로와 통합 SP 배치, 작업 비중에 따른 활용을 비교했다. G80 통합을 GPU 전체의 단일 레지스터·메모리 풀로 표현하지 않는다.
 - [CUDA Programming Guide 1.0](https://developer.download.nvidia.com/compute/cuda/1.0/NVIDIA_CUDA_Programming_Guide_1.0.pdf), June 23, 2007, printed pp. 2–5, 7, 13–15 and Figure 3-1. instruction unit·레지스터·반복 프로세서·multiprocessor별 shared memory와 장치 메모리 연결을 참고했다. 이전 그래픽 경로의 출력 제약과 CUDA의 일반 읽기·쓰기를 구분하며, G80에 현대적인 L1/L2 데이터 캐시를 추가하지 않는다.
 - [Navigating GPU Architecture Support](https://developer.nvidia.com/blog/navigating-gpu-architecture-support-a-guide-for-nvidia-cuda-developers/), August 4, 2025, GPU support sections. CUDA 도입 전 하드웨어의 기능 부족과 최신 Toolkit에서 이전 CUDA 타깃의 지원이 종료되는 문제를 대본에서 구분한다.
+
+### `pipeline-examples/`
+
+- Files: `01-vertices.png`, `02-fragments.png`, `03-colors.png`, `04-framebuffer.png` (각 640 × 480 pixels).
+- Generator: [`pipeline-examples/render.py`](pipeline-examples/render.py), Python 3 + NumPy + Pillow. 같은 기하·카메라·제출 순서를 사용한 자체 소프트웨어 rasterizer이며 외부 이미지나 모델은 사용하지 않는다.
+- Scene: 체크무늬 큐브와 바닥, 뒤쪽의 반투명 파란 판. 정점 투영, 샘플 중심의 barycentric coverage, perspective-correct UV 보간, 텍스처·조명 계산, 깊이 검사와 alpha 혼합을 실행한다.
+- `01`: 변환된 정점과 삼각형 연결을 선으로 표시한 진단 화면이다. 파이프라인에 별도의 wireframe 이미지 생성 단계가 있다는 의미는 아니다.
+- `02`: 40 × 30 sample grid를 확대했다. 진하기는 가려짐 처리 전 같은 위치에 생성된 프래그먼트 수이며, 하나의 최종 픽셀에 여러 후보가 있을 수 있음을 보여준다.
+- `03`: 계산된 RGB를 제출 순서대로 표시하고 깊이 검사·alpha 혼합을 끈 진단 화면이다. 실제 GPU의 보편적인 중간 framebuffer라고 주장하지 않는다.
+- `04`: 불투명 물체의 깊이 검사를 수행한 뒤 투명 판을 깊이 검사하고 alpha 혼합한 결과다. 판은 깊이 버퍼를 갱신하지 않는다.
+- Pipeline reference: [NVIDIA The Cg Tutorial, chapter 1](https://developer.nvidia.com/w/CgTutorial/cg_tutorial_chapter01.html), §1.2.2. 논리적 설명 순서이며 early depth와 clipping 등 실제 하드웨어 최적화·세부 단계는 생략한다. 원본 그림 복제나 생성형 이미지 합성을 하지 않았다.
 
 ### Workload changes, HBM, Tensor Cores, and LLM state
 
