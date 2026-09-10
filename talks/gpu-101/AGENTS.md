@@ -92,8 +92,10 @@ compensate for an overcrowded layout.
   per thread, not PyTorch's actual optimized kernel configuration.
 - Distinguish logical work, resident work, execution width, and physical
   resources. Label illustrative schedules and resource-limit assumptions.
-- Tie V100 numbers and the 16-unit/two-cycle FP32 example to Volta; do not
-  generalize them to all GPUs or confuse processing width with result latency.
+- Scope the detailed SM diagram and residency example to RTX Blackwell (CC 12.0).
+  The whole-GPU example uses Rubin public preliminary specifications as of
+  2026-09-10; CUDA 13.4 support is preview. Do not transplant Blackwell internal
+  counts to Rubin or infer instruction latency from unit counts.
 - Preserve the distinction between host return and GPU completion. Show
   same-stream ordering and direct writes into the GPU result buffer.
 - Separate CPU-to-GPU input transfer from on-device loads. The original
