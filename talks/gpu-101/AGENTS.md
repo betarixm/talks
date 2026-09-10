@@ -31,7 +31,8 @@ user's current instructions when they change the choices recorded here.
 - Preserve the requested extensions: host-to-device input transfer,
   cache/register access, optional shared-memory staging, contents, section
   dividers, and the closing disclaimer.
-- After constructing the GPU from SMs, explain HPC/deep-learning memory and
+- After constructing the GPU from SMs, use AlexNet on two GTX 580 GPUs as
+  the concrete transition to learning workloads. Then explain HPC/deep-learning memory and
   matrix demands, then LLM state and communication needs before presenting
   Rubin. Connect each hardware feature to the work it serves. Introduce the
   CUDA ecosystem at the start of the `A + B` section, then follow one teaching
@@ -134,6 +135,10 @@ compensate for an overcrowded layout.
   vertex/fragment programmability to the GeForce FX era. Retain specialized
   rasterization and depth/blend stages. Do not add modern L1/L2 data caches
   to the early G80 compute diagram.
+- Scope AlexNet to the 2012 researchers' CUDA implementation and two 3 GB
+  GTX 580 GPUs. Distinguish model-capacity-driven partitioning from memory
+  bandwidth, and one-network training time from the winning ensemble. Do
+  not call it the first GPU training or the sole cause of later GPU features.
 - Use P100/HBM2 and Volta/Tensor Cores as distinct historical responses to
   memory supply and matrix-computation demands. HBM predates LLMs; Tensor
   Cores accelerate supported matrix operations rather than every operation

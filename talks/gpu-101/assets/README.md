@@ -203,8 +203,7 @@ footer가 crop 밖에 있으므로 사용하는 슬라이드에 강의명, PDF U
 
 ## Appendix references
 
-아래 자료는 2026-09-10에 확인했다. 어펜딕스 그림은 자체 TikZ 도식이며 외부
-이미지 추출·crop은 없다. 반복 유닛 수, 배선, 스케줄은 별도 표시가 없으면
+아래 자료는 2026-09-10에 확인했다. 어펜딕스 구조 그림은 자체 TikZ 도식이며, Cerebras 페이지에는 아래에 기록한 공식 사진을 함께 사용한다. 반복 유닛 수, 배선, 스케줄은 별도 표시가 없으면
 설명용 예시이고, 공급사 간 마케팅 성능 비교를 재현하지 않는다.
 
 ### Other accelerator ecosystems: AMD, HIP, TPU, NPUs, Cerebras
@@ -245,3 +244,17 @@ footer가 crop 밖에 있으므로 사용하는 슬라이드에 강의명, PDF U
 - [OpenXLA PJRT](https://openxla.org/xla/pjrt) and [C++ API overview](https://openxla.org/xla/pjrt/cpp_api_overview): device-specific implementations behind a shared API for device discovery, buffers, compile/load and execution. PJRT is separate from the program representation and can invoke compilation rather than only dispatching already-compiled code.
 - [OpenXLA PyTorch Conference 2022 poster](https://pytorch.s3.amazonaws.com/posters/ptc2022/H01.pdf), p. 1: lack of versioning/compatibility guarantees for HLO/MHLO. [StableHLO](https://openxla.org/stablehlo), [roadmap](https://openxla.org/stablehlo/roadmap) and [compatibility](https://openxla.org/stablehlo/compatibility): specified ops, serialization, H1 2024 v1.0 and the scope of artifact compatibility. Internal HLO remains; custom-call semantics and target performance are not universal portability guarantees.
 - [Torch Export to StableHLO, 2.6](https://docs.pytorch.org/xla/release/r2.6/features/stablehlo.html) is the concrete export example. Do not imply that every torch_xla runtime call first exports a serialized artifact. These are original TikZ diagrams, with no external image extraction. Sources checked 2026-09-10.
+
+### Cerebras wafer-scale processor photograph
+
+- File: `cerebras-wafer-in-hands.png` (4096 × 2160, original PNG).
+- Source page: [Cerebras — Chip](https://www.cerebras.ai/chip), accessed 2026-09-10.
+- Original asset: [Cerebras CDN photo](https://cdn.sanity.io/images/e4qjo92p/production/2e3644fdc0293fc7d6ca2933f35eba4128e39b12-4096x2160.png).
+- Treatment: aspect ratio preserved; no crop, recoloring, retouching, or generated content. The person's hands and entire processor remain visible for scale. Credit: Cerebras.
+- The photo illustrates physical wafer scale; its generation is not inferred from appearance. The adjacent WSE-3 / 2024 / 900,000 cores / 44 GB SRAM labels describe the separately cited historical architecture example.
+
+### AlexNet: the workload transition in the main talk
+
+- [Krizhevsky, Sutskever & Hinton, ImageNet Classification with Deep Convolutional Neural Networks (2012)](https://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf): PDF p. 3, §3.2 documents the two-GPU split, 3 GB per GTX 580 and selected-layer communication; p. 5, Figure 2 shows the network partition; p. 7, §§5–6 gives roughly 5–6 days per network and competition results. The slide does not equate one trained CNN with the winning multi-model entry or present a new benchmark.
+- [Original AlexNet source code, Computer History Museum](https://github.com/computerhistory/AlexNet-Source-Code): primary-source archive for the researchers' CUDA implementation. No code or external figure is copied into the slide; it uses an original TikZ schematic with illustrative SM counts and network partitions.
+- Narrative scope: a landmark use of existing GPU compute before the later P100/HBM2 and Volta/Tensor Core examples. Memory capacity, memory bandwidth, and cross-GPU communication remain separate constraints. Do not identify AlexNet as the first GPU-trained network or the sole cause of subsequent hardware features. Sources checked 2026-09-10.

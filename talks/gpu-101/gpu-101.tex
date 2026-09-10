@@ -726,7 +726,40 @@ output = mix(water_color, reflected, weight)
   \credit{https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/programming-model.html}{NVIDIA CUDA Programming Guide · GPU Hardware Model · illustrative SM count}
   \note{이제 자기 몫의 실행을 관리할 수 있는 SM을 여러 개 배치해 GPU를 키워봅시다. 각 SM은 가까운 레지스터와 실행 자원을 사용합니다. 그 바깥에는 여러 SM이 함께 사용하는 L2 캐시와 메모리 시스템이 연결되고, 오른쪽의 큰 GPU 메모리인 VRAM에는 텐서 같은 입력과 출력을 담습니다.
 
-  warp에서는 같은 명령의 제어를 함께 쓰고, SM마다 실행 상태와 연산 자원을 가까이 묶습니다. 그런 SM을 반복해서 배치하면 각각 자기 몫의 일을 진행할 수 있습니다. 실제 GPU의 전체 부품을 그린 것은 아니지만, 범용 계산을 담당하는 중심 구조를 이렇게 볼 수 있습니다. 그런데 이 기계에 맡기는 계산이 달라지면, 연산과 메모리에 요구하는 것도 달라집니다. 최신 GPU를 보기 전에 그 변화를 짚어보겠습니다.}
+  warp에서는 같은 명령의 제어를 함께 쓰고, SM마다 실행 상태와 연산 자원을 가까이 묶습니다. 그런 SM을 반복해서 배치하면 각각 자기 몫의 일을 진행할 수 있습니다. 실제 GPU의 전체 부품을 그린 것은 아니지만, 범용 계산을 담당하는 중심 구조를 이렇게 볼 수 있습니다. 그런데 이 기계에 맡기는 계산이 달라지면, 연산과 메모리에 요구하는 것도 달라집니다. 최신 GPU를 보기 전에, 이 구조를 실제 이미지 학습에 활용한 2012년 AlexNet으로 돌아가보겠습니다.}
+\end{frame}
+
+% A concrete workload bridges the general GPU engine and AI-driven hardware changes.
+\begin{frame}[label=alexnet]{2012: AlexNet trained on two NVIDIA GPUs}
+  \begin{diagram}{4.5}
+    \node[anchor=west,font=\scriptsize\bfseries,text=work] at (0,4.16) {ILSVRC 2012 · WINNING ENTRY};
+    \node[workbox,text width=4.35cm,minimum height=.9cm,font=\small] (model) at (2.4,3.1)
+      {AlexNet · CNN\\Learn filters from images};
+    \node[workbox,text width=4.35cm,minimum height=.9cm,font=\small] (code) at (2.4,1.62)
+      {Optimized CUDA kernels\\Convolution + training};
+    \draw[flow] (model)--(code);
+    \foreach \xx/\id in {8.0/A,12.8/B} {
+      \node[workbox,minimum width=3.1cm,minimum height=.55cm,font=\scriptsize] (part\id) at (\xx,3.7) {Network partition \id};
+      \draw[hwbox] (\xx-1.75,.55) rectangle (\xx+1.75,3.05);
+      \node[font=\small\bfseries,text=hw] at (\xx,2.67) {NVIDIA GTX 580};
+      \foreach \dx in {-1.05,0,1.05}
+        \node[hwbox,fill=white,minimum width=.82cm,minimum height=.58cm,inner sep=2pt,font=\scriptsize] at (\xx+\dx,1.93) {SM};
+      \node[membox,minimum width=2.9cm,minimum height=.58cm,font=\small] (mem\id) at (\xx,1.06) {3 GB memory};
+      \foreach \dx in {-1.05,0,1.05}
+        \draw[memBorder] (\xx+\dx,1.64)--(\xx+\dx,1.35);
+      \draw[flow,draw=work] (part\id.south)--(\xx,3.05);
+    }
+    \draw[flow,draw=work] (code.east)--(5.65,1.62)--(5.65,3.7)--(partA.west);
+    \draw[flow,draw=work] (5.65,3.7)--(5.65,4.2)--(12.8,4.2)--(partB.north);
+    \draw[flow,<->,draw=mem] (9.75,1.95)--node[above,lab,align=center] {Selected\\layers} (11.05,1.95);
+    \node[anchor=west,font=\small\bfseries] at (0,.35) {One network: about 5--6 days to train};
+    \node[lab,anchor=west] at (6.25,.15) {Memory limits shaped the split; communication shaped the connections.};
+  \end{diagram}
+  \takeaway{Existing GPU compute made large-scale learning practical; the workload then kept growing.}
+  \credit{}{\href{https://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf}{Krizhevsky, Sutskever \& Hinton · 2012 · §§3.2, 5--6} · \href{https://github.com/computerhistory/AlexNet-Source-Code}{Original CUDA code · CHM archive} · schematic partitions and SM count}
+  \note{2012년 Krizhevsky, Sutskever, Hinton의 합성곱 신경망, CNN인 AlexNet은 ImageNet 대회에서 큰 성과를 냈습니다. 그림을 그리던 GPU로, 그림 속에 무엇이 있는지 알아보는 법을 학습한 것입니다. 연구진은 합성곱과 학습 연산을 CUDA로 효율적으로 구현했습니다. 논문은 NVIDIA GTX 580 두 장에서 한 네트워크를 학습하는 데 약 5--6일이 걸렸다고 보고합니다.
+
+  장당 메모리는 3GB였습니다. 원하는 모델을 한 장에 담기 어려워 둘로 나누고, 특정 층에서만 값을 교환하도록 설계했습니다. 하드웨어의 용량과 통신 비용이 모델 구조에 영향을 준 것입니다. 그림의 SM 개수는 설명용입니다. 이렇게 기존 CUDA 실행 자원을 활용한 학습이 성과를 냈고, 이후 과학 계산과 딥러닝의 규모가 커지면서 연산과 데이터 공급의 요구도 커졌습니다. 다음에는 얼마나 담는가와 별개로, 데이터를 얼마나 빨리 공급하는가를 보겠습니다.}
 \end{frame}
 
 % Workload evolution explains specialized compute and memory hardware.
@@ -770,11 +803,11 @@ output = mix(water_color, reflected, weight)
   \end{diagram}
   \takeaway{HBM widens the physical data path; kernels still need efficient access and reuse.}
   \credit{https://developer.nvidia.com/blog/inside-pascal/}{NVIDIA · Inside Pascal (2016) · Dramatic Improvements in Memory · schematic packaging comparison}
-  \note{같은 CUDA 커널도 데이터가 도착하지 않으면 기다립니다. 왼쪽은 GPU와 GDDR5 메모리가 보드 위의 별도 패키지로 놓인 구성입니다. GPU 안의 SM이 값을 요청하면 메모리 컨트롤러와 보드의 연결을 통해 데이터를 주고받습니다.
+  \note{AlexNet에서는 모델을 담을 용량이 제약이었습니다. 이번에는 계산에 쓸 데이터의 공급 속도인 대역폭을 보겠습니다. 공간이 충분해도 값이 제때 도착하지 않으면 연산기는 기다립니다. 왼쪽은 GPU와 GDDR5 메모리를 보드 위의 별도 패키지로 놓은 구성입니다. SM이 요청한 값은 메모리 컨트롤러와 보드 배선을 통해 오갑니다.
 
-  오른쪽 P100은 여러 층으로 쌓은 HBM2를 GPU 다이와 같은 패키지에 놓습니다. 아래의 실리콘 interposer가 둘을 넓게 연결합니다. 여러 갈래로 그린 선은 더 많은 데이터를 공급하는 물리적인 연결을 표현하며 실제 비트 폭이나 층수를 재현한 것은 아닙니다. 큰 데이터를 다루는 과학 계산과 딥러닝에 필요한 대역폭을 높인 변화이고, LLM보다 먼저 사용됐습니다.
+  오른쪽 P100은 쌓아 올린 HBM2를 GPU 다이와 같은 패키지에 놓습니다. 아래의 실리콘 interposer가 둘을 넓게 연결합니다. 여러 선은 더 많은 데이터를 공급하는 연결을 표현하며 실제 비트 폭이나 층수를 재현하지는 않습니다. 과학 계산과 딥러닝의 대역폭을 높인 변화이며, LLM보다 먼저 사용됐습니다.
 
-  맨 위 프로그램은 두 경우 모두 입력을 읽고 계산하고 결과를 씁니다. HBM 전용 CUDA 명령으로 바꿔 쓰는 것은 아닙니다. 하드웨어는 데이터 공급 경로를 넓히고, 커널은 효율적인 접근과 재사용으로 그 대역폭을 활용합니다. 이제 데이터를 받은 뒤 계산하는 회로와 명령 경로도 어떻게 달라졌는지 보겠습니다.}
+  맨 위 커널은 두 경우 모두 입력을 읽고 계산하고 결과를 씁니다. HBM 전용 명령으로 바꾸는 것은 아닙니다. 하드웨어는 공급 경로를 넓히고, 커널은 효율적인 접근과 재사용으로 이를 활용합니다. 이제 값을 받은 뒤 계산하는 회로와 명령 경로의 변화도 보겠습니다.}
 \end{frame}
 
 \begin{frame}{Matrix kernels gained a new physical execution path}
@@ -1674,30 +1707,30 @@ __global__ void add(
 
 \begin{frame}[label=app-cerebras]{Cerebras makes the wafer itself a compute fabric}
   \begin{diagram}{4.45}
-    \node[workbox,minimum width=4.5cm,minimum height=.74cm,font=\small] (cm) at (2.5,3.65) {PyTorch model};
-    \node[plainbox,minimum width=4.5cm,minimum height=.88cm,font=\small] (cc) at (2.5,2.35) {Cerebras compiler\\places work across the wafer};
+    \node[anchor=south west,inner sep=0pt] at (0,.36)
+      {\includegraphics[height=4.05cm,width=6.65cm,keepaspectratio]{cerebras-wafer-in-hands.png}};
+    \node[lab,anchor=west] at (0,.1) {Cerebras wafer-scale processor · hands show physical scale};
+    \node[workbox,minimum width=2.05cm,minimum height=.65cm,font=\small] (cm) at (8.1,3.85) {PyTorch model};
+    \node[plainbox,minimum width=3.5cm,minimum height=.65cm,font=\small] (cc) at (12.35,3.85) {Compiler: place work};
     \draw[flow] (cm)--(cc);
-    \node[membox,text width=4.1cm,minimum height=1.05cm,font=\small] (mx) at (2.5,.85) {MemoryX / host memory\\weight-streaming training};
-    \draw[draw=hwBorder,fill=hwLight,rounded corners=3pt,line width=.8pt] (6.1,.55) rectangle (10.15,4.3);
-    \foreach \xx in {0,1,2,3} \foreach \yy in {0,1,2,3} {
-      \draw[hwBorder,line width=.6pt] (6.72+.91*\xx,1.1+.87*\yy)--(9.45,1.1+.87*\yy);
-      \draw[hwBorder,line width=.6pt] (6.72+.91*\xx,1.1)--(6.72+.91*\xx,3.71);
+    \draw[draw=hwBorder,fill=hwLight,rounded corners=3pt,line width=.8pt] (10.65,.75) rectangle (14.35,3.1);
+    \foreach \yy in {1.2,1.95,2.7} \draw[hwBorder,line width=.7pt] (11.25,\yy)--(13.75,\yy);
+    \foreach \xx in {11.25,12.5,13.75} \draw[hwBorder,line width=.7pt] (\xx,1.2)--(\xx,2.7);
+    \foreach \xx in {11.25,12.5,13.75} \foreach \yy in {1.2,1.95,2.7} {
+      \node[hwbox,minimum width=.94cm,minimum height=.6cm,inner sep=2pt,font=\scriptsize] at (\xx,\yy) {Core\\\textcolor{mem}{SRAM}};
     }
-    \foreach \xx in {0,1,2,3} \foreach \yy in {0,1,2,3} {
-      \node[hwbox,minimum width=.73cm,minimum height=.58cm,inner sep=1pt,font=\fontsize{8}{9}\selectfont] at (6.72+.91*\xx,1.1+.87*\yy) {Core\\\textcolor{mem}{SRAM}};
-    }
-    \draw[flow,draw=work] (cc.east)--(5.35,2.35)--(5.35,3.65)--(6.1,3.65);
-    \draw[flow,draw=mem,<->] (mx.east)--(6.1,.9);
-    \node[font=\large\bfseries,align=left,anchor=west] at (10.7,3.5) {WSE-3 · 2024};
-    \node[font=\Large\bfseries,anchor=west] at (10.7,2.65) {900,000};
-    \node[lab,anchor=west] at (10.7,2.15) {AI compute cores};
-    \node[font=\Large\bfseries,anchor=west] at (10.7,1.4) {44 GB};
-    \node[lab,anchor=west] at (10.7,.9) {on-chip SRAM};
-    \node[lab,anchor=west] at (6.1,.18) {Connected core + local-memory tiles; illustrative count};
+    \draw[flow,draw=work] (cc.south)--(12.35,3.1);
+    \node[font=\small\bfseries,anchor=west] at (7.05,3.0) {WSE-3 · 2024};
+    \node[font=\large\bfseries,anchor=west] at (7.05,2.4) {900,000 cores};
+    \node[font=\large\bfseries,anchor=west] at (7.05,1.8) {44 GB SRAM};
+    \node[membox,minimum width=2.7cm,minimum height=.6cm,font=\scriptsize] (mx) at (8.5,.87) {External MemoryX};
+    \draw[flow,draw=mem,<->] (mx.east)--(10.65,.87);
+    \node[lab,anchor=west] at (7.05,.38) {Weight-streaming training};
+    \node[lab,anchor=west] at (10.65,.38) {Illustrative core + SRAM tiles};
   \end{diagram}
   \takeaway{Move much more compute and memory onto one fabric; the system boundary still matters.}
-  \credit{}{\href{https://www.cerebras.ai/press-release/cerebras-announces-third-generation-wafer-scale-engine}{Cerebras · WSE-3 announcement, March 2024} · \href{https://www.cerebras.ai/blog/supporting-pytorch-on-the-cerebras-wafer-scale-engine}{PyTorch compiler} · \href{https://training-api.cerebras.ai/en/1.9.1/wsc/cerebras-basics/cerebras-execution-modes.html}{Weight streaming}}
-  \note{보통은 웨이퍼를 개별 칩으로 잘라냅니다. Cerebras는 그 경계까지 연결해서, 웨이퍼 규모의 연결망에 계산 코어와 SRAM을 반복 배치합니다. 2024년 WSE-3는 90만 개 코어와 44GB의 칩 내부 SRAM을 가진 예입니다. GPU의 HBM 용량과는 메모리 종류와 위치부터 다릅니다.
+  \credit{}{\href{https://www.cerebras.ai/chip}{Photo: Cerebras} · \href{https://www.cerebras.ai/press-release/cerebras-announces-third-generation-wafer-scale-engine}{Cerebras · WSE-3 announcement, March 2024} · \href{https://www.cerebras.ai/blog/supporting-pytorch-on-the-cerebras-wafer-scale-engine}{PyTorch compiler} · \href{https://training-api.cerebras.ai/en/1.9.1/wsc/cerebras-basics/cerebras-execution-modes.html}{Weight streaming}}
+  \note{왼쪽 사진에서 사람의 손과 웨이퍼 크기를 비교해보세요. Cerebras가 공개한 사진이며, 웨이퍼 규모라는 말이 실제로 어느 정도 크기인지 보여줍니다. 보통은 웨이퍼를 개별 칩으로 잘라냅니다. Cerebras는 그 경계까지 연결해서, 웨이퍼 규모의 연결망에 계산 코어와 SRAM을 반복 배치합니다. 2024년 WSE-3는 90만 개 코어와 44GB의 칩 내부 SRAM을 가진 예입니다. GPU의 HBM 용량과는 메모리 종류와 위치부터 다릅니다.
 
   컴파일러는 모델의 일을 이 거대한 공간에 배치합니다. 그렇다고 모델과 데이터가 언제나 웨이퍼 안에 전부 들어간다는 뜻은 아닙니다. 큰 모델의 학습에는 외부 MemoryX에서 가중치를 흘려보내는 방식도 씁니다. 계산과 저장을 가까이 놓는 선택을 극단까지 밀어붙였지만, 외부 메모리·입출력·전력·냉각을 포함한 시스템 설계는 여전히 필요합니다.}
 \end{frame}
