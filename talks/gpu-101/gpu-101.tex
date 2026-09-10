@@ -1116,11 +1116,13 @@ __global__ void add(
     \draw[flow] (queue.south) -- (12.2,1.6) -- (9.05,1.6);
     \node[lab,text width=4.1cm,align=left,anchor=west] at (10.1,.65) {Illustrative placement.\\Order and simultaneous block counts are not guaranteed.};
   \end{diagram}
-  \takeaway{One block runs on one SM. An SM may host several blocks.}
+  \takeaway{A block stays on one SM. Multiple blocks let work spread across SMs.}
   \credit{https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/programming-model.html}{CUDA Programming Guide · Assigning blocks to SMs}
   \note{GPU는 제출한 grid의 block들을 SM에 배치합니다. 왼쪽의 작업 묶음이 가운데 실행 엔진에 올라가는 모습입니다. 그림은 가능한 배치의 예이고, 실제 순서와 동시에 올라가는 block 수는 GPU와 커널에 따라 달라집니다.
 
-  중요한 규칙은 block 하나가 같은 SM에서 실행된다는 점입니다. SM 하나에는 레지스터, shared memory, 실행 상태를 보관할 공간이 허용하는 만큼 여러 block이 함께 올라갈 수 있습니다. 자원이 차면 오른쪽의 나머지 block은 기다립니다. 실행 중인 block이 끝나 자리가 나면 다음 block이 배치됩니다. 그래서 block 4096개를 더 적은 수의 SM이 나누어 처리할 수 있습니다. 실행할 작업을 충분히 제출해두면, 유한한 하드웨어가 자원을 되쓰며 진행하는 것입니다.}
+  Block 하나는 같은 SM에서 실행됩니다. 따라서 block 안의 thread 수를 늘려도 그 block이 여러 SM에 나뉘지는 않습니다. 여러 SM에 일을 주려면 여러 block을 제출해야 합니다. 이번에 준비한 block 4096개를 GPU가 여러 SM에 나눠 맡기는 것입니다.
+
+  SM 하나에는 레지스터, shared memory, 실행 상태를 보관할 공간이 허용하는 만큼 여러 block이 함께 올라갈 수 있습니다. 자원이 차면 나머지 block은 기다리고, 실행 중인 block이 끝나 자리가 나면 다음 block이 배치됩니다. 이렇게 더 적은 수의 SM이 자원을 되쓰며 전체 작업을 처리합니다.}
 \end{frame}
 
 \begin{frame}{A 256-thread block contains eight warps}
@@ -1280,65 +1282,7 @@ __global__ void add(
 \end{frame}
 
 % Source manuscript §16.
-\subsection{Utilization and completion}
-\begin{frame}[fragile]{What if we launch just one thread?}
-\begin{lstlisting}[basicstyle=\ttfamily\fontsize{10}{14}\selectfont]
-add<<<1, 1>>>(device_a, device_b, device_c, 1);
-\end{lstlisting}
-  \begin{diagram}{3.45}
-    \draw[hwbox] (0,.3) rectangle (14.7,3.3);
-    \node[anchor=west,font=\small\bfseries,text=hw] at (.3,2.93) {ONE SM};
-    \draw[workbox] (.35,.65) rectangle (14.35,2.45);
-    \node[anchor=west,font=\scriptsize\bfseries,text=work] at (.65,2.12) {BLOCK 0 · WARP 0};
-    \foreach \i in {0,...,31} {
-      \ifnum\i=0
-        \fill[work] (.7+\i*.414,1.12) rectangle ++(.35,.52);
-      \else
-        \fill[blackPrimary!8] (.7+\i*.414,1.12) rectangle ++(.35,.52);
-      \fi
-    }
-    \node[smalllab,anchor=west] at (.7,.83) {Lane 0: one valid thread};
-    \node[smalllab,anchor=east] at (13.88,.83) {Lanes 1–31: unused};
-  \end{diagram}
-  \takeaway{One active thread in a warp on one SM.}
-  \credit{https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/programming-model.html}{NVIDIA CUDA Programming Guide · Partial warps · assumes no other GPU work}
-  \note{지금까지는 백만 개 넘는 원소를 GPU에 맡겼습니다. 이제 자원을 얼마나 활용할 수 있는지 보려고, 원소 하나만 더하도록 일을 줄여보겠습니다. GPU에는 다른 작업이 없다고 하겠습니다. 코드의 마지막 인자도 원소 수 1로 바뀌었고, block 하나에 thread 하나를 넣었습니다.
-
-  이때도 실행을 관리할 warp가 생깁니다. warp 안에서 0번부터 31번까지의 논리적인 thread 자리를 lane이라고 부릅니다. 실제 작업을 가진 thread는 lane 0 하나뿐이고 나머지 자리는 비어 있습니다. 이 block은 한 SM에 배치되고, 그 thread는 읽기와 덧셈, 쓰기에 필요한 자원을 차례로 사용합니다. 따라서 이 요청만으로는 warp의 나머지 자리와 다른 SM에 줄 일이 없습니다.}
-\end{frame}
-
-\begin{frame}{More threads in one block still means one SM}
-  \begin{diagram}{4.45}
-    \node[anchor=west,font=\small\bfseries] at (0,4.08) {ONE LARGE BLOCK};
-    \node[anchor=west,font=\small\bfseries] at (7.8,4.08) {MANY BLOCKS};
-    \node[anchor=west,font=\small\ttfamily] at (0,3.5) {add<<<1, 1024>>>(...)};
-    \node[anchor=west,font=\small\ttfamily] at (7.8,3.5) {add<<<4096, 256>>>(...)};
-    \node[lab,anchor=west] at (0,3.11) {Small example · 1,024 elements};
-    \node[lab,anchor=west] at (7.8,3.11) {Original example · 1,048,576 elements};
-    \draw[line] (7.35,.2)--(7.35,4.3);
-    \foreach \x in {0,...,1} \foreach \y in {0,...,1} {
-      \pgfmathtruncatemacro{\id}{2*\y+\x}
-      \node[hwbox,minimum width=3.0cm,minimum height=.9cm,font=\small] at (1.58+\x*3.42,2.53-\y*1.14) {};
-      \ifnum\id>0
-        \node[font=\small] at (1.58+\x*3.42,2.53-\y*1.14) {SM \id};
-      \fi
-      \node[hwbox,minimum width=3.0cm,minimum height=.9cm,font=\small] at (9.35+\x*3.42,2.53-\y*1.14) {};
-      \node[workbox,minimum width=2.45cm,minimum height=.5cm,font=\scriptsize,inner sep=2pt] at (9.35+\x*3.42,2.53-\y*1.14) {Blocks on SM \id};
-    }
-    \node[font=\fontsize{7}{8}\selectfont\bfseries,text=hw] at (1.58,2.8) {SM 0};
-    \node[workbox,minimum width=2.5cm,minimum height=.42cm,font=\scriptsize,inner sep=2pt] at (1.58,2.41) {One block · 32 warps};
-    \node[lab,anchor=west] at (0,.38) {1,024 threads/block: device and kernel limits apply};
-    \node[lab,anchor=west] at (7.8,.38) {Blocks available for multiple SMs};
-  \end{diagram}
-  \takeaway{Fill the warps, and provide blocks that can spread across SMs.}
-  \note{일을 늘리면 어떻게 달라질까요? 왼쪽은 원소 1024개를 처리하는 작은 예제이고, 오른쪽은 원래의 백만 개 넘는 원소를 처리하는 예제입니다. 작업량도 함께 바뀝니다. 여기서는 여러 SM에 일을 줄 수 있는 조건을 보겠습니다.
-
-  왼쪽은 block 하나에 thread 1024개를 넣어 warp 32개를 만듭니다. 1024는 NVIDIA GPU에서 대표적인 block당 thread 상한이며, 커널의 레지스터 사용량 같은 자원 제약도 충족해야 합니다. 허용되는 설정이어도 block 하나는 한 SM에서 실행됩니다. block을 키우는 것만으로 여러 SM에 일이 퍼지지는 않습니다.
-
-  오른쪽은 block 4096개, block당 thread 256개입니다. 여러 SM에 나눠 맡길 block이 충분히 있습니다. 그림의 SM 네 개는 배치 원리를 보여줍니다. GPU를 활용하려면 warp 안에 할 일이 있어야 하고, 여러 SM에 올릴 block도 있어야 합니다.}
-\end{frame}
-
-% Source manuscript §17.
+\subsection{Results and completion}
 \begin{frame}{Threads write directly into C}
   \begin{diagram}{4.4}
     \draw[membox] (.15,.55) rectangle (14.55,2.15);
@@ -1358,7 +1302,7 @@ add<<<1, 1>>>(device_a, device_b, device_c, 1);
     \node[lab,anchor=east] at (14.35,.35) {Selected elements shown; placement is illustrative};
   \end{diagram}
   \takeaway{Each thread stores its own result. The CPU does not reassemble the matrix.}
-  \note{이제 원래의 block 4096개 예제로 돌아와 결과가 어디에 저장되는지 보겠습니다. 각 thread는 자기 원소를 계산한 다음, launch 전에 준비해 둔 GPU 메모리의 C에 직접 씁니다. 그림의 주황색 공통 경계가 하나의 결과 버퍼이고, 그 안에서 서로 다른 출력 위치를 맡습니다. 몇 개의 원소만 골라 그린 것입니다.
+  \note{이렇게 진행한 덧셈의 결과가 어디에 저장되는지 보겠습니다. 각 thread는 자기 원소를 계산한 다음, launch 전에 준비해 둔 GPU 메모리의 C에 직접 씁니다. 그림의 주황색 공통 경계가 하나의 결과 버퍼이고, 그 안에서 서로 다른 출력 위치를 맡습니다. 몇 개의 원소만 골라 그린 것입니다.
 
   모든 thread의 저장이 끝나면 그 버퍼에 결과 행렬이 완성됩니다. 각 thread가 처음부터 최종 위치에 쓰므로 CPU가 SM별 조각을 받아 다시 조립할 필요도 없습니다. 그러면 Python에서 C를 받았을 때 이 값들은 모두 준비되어 있을까요?}
 \end{frame}
@@ -1493,6 +1437,611 @@ add<<<1, 1>>>(device_a, device_b, device_c, 1);
     };
   \end{tikzpicture}
   \note{마지막으로 이 자료의 설명 범위를 말씀드리겠습니다. 오늘 본 커널과 다이어그램은 기본 개념을 이해하기 위한 교육용 예시입니다. 실제 하드웨어의 세부 구조와 메모리 동작, 실행 설정은 GPU 아키텍처와 소프트웨어 버전에 따라 달라질 수 있습니다. 특히 예제의 block 수와 thread 수를 실제 PyTorch 내부의 고정된 구현으로 받아들이지는 않으시면 좋겠습니다. NVIDIA와 Stanford의 자료는 출처를 표시하고 참고한 것이며, 이 발표에 대한 공식적인 보증이나 지지를 뜻하지 않습니다. 설명에 들어간 해석과 오류의 책임은 발표자에게 있습니다. 질문이나 수정 의견은 아래 연락처로 보내주시면 감사하겠습니다.}
+\end{frame}
+
+% Optional appendix follows the main talk's intentional two-part ending.
+\appendix
+\AtBeginSection[]{}
+\setbeamertemplate{headline}{%
+  \leavevmode
+  \begin{beamercolorbox}[wd=\paperwidth,leftskip=\blackhpad,rightskip=\blackhpad,sep=0pt]{headline}%
+    \vskip\blackvpad
+    {\usebeamerfont{headline}\insertsectionhead\hfill
+      {\scriptsize\hyperlink{appendix-index}{Appendix index}}\par}%
+  \end{beamercolorbox}%
+}
+\section*{Appendix}
+\begin{frame}[label=appendix-index]{Beyond one GPU: choose a question}
+  \begin{diagram}{4.6}
+    \foreach \yy in {4.5,3.38,2.26,1.14,.02} \draw[line] (0,\yy)--(14.7,\yy);
+    \node[anchor=west,font=\small\bfseries] at (0,3.94) {Other accelerators};
+    \node[anchor=west,font=\small,text=work,align=left] at (5.15,3.94)
+      {\hyperlink{app-amd}{AMD + ROCm}\quad\hyperlink{app-hip}{HIP}\quad\hyperlink{app-tpu}{TPU}\\[.12cm]
+       \hyperlink{app-npu}{NPU startups}\quad\hyperlink{app-cerebras}{Cerebras}};
+    \node[anchor=west,font=\small\bfseries] at (0,2.82) {LLMs and the data center};
+    \node[anchor=west,font=\small,text=work,align=left] at (5.15,2.82)
+      {\hyperlink{app-training}{Training}\quad\hyperlink{app-serving}{Serving}\quad\hyperlink{app-parallel}{Parallelism}\\[.12cm]
+       \hyperlink{app-datacenter}{Reliability, power, cooling}\quad\hyperlink{app-networking}{NVIDIA networking}};
+    \node[anchor=west,font=\small\bfseries] at (0,1.7) {Bits, bandwidth, packaging};
+    \node[anchor=west,font=\small,text=work,align=left] at (5.15,1.7)
+      {\hyperlink{app-formats}{Number formats}\quad\hyperlink{app-lowprecision}{Mixed precision}\\[.12cm]
+       \hyperlink{app-hbm}{HBM}\quad\hyperlink{app-fa}{FlashAttention}\quad\hyperlink{app-packaging}{TSMC packaging}};
+    \node[anchor=west,font=\small\bfseries] at (0,.58) {Linux and deployment};
+    \node[anchor=west,font=\small,text=work,align=left] at (5.15,.58)
+      {\hyperlink{app-linux}{Torvalds and NVIDIA}\\[.12cm]
+       \hyperlink{app-container-image}{Portable GPU images}\quad\hyperlink{app-container-driver}{Containers and the host driver}};
+  \end{diagram}
+  \takeaway{The recurring question: what must change around the compute units?}
+  \credit{}{Optional reference topics · click a topic or use Appendix index · sources checked September 10, 2026}
+  \note{여기부터는 질문에 맞춰 골라 볼 수 있는 부록입니다. 다른 가속기는 어떤 선택을 했는지, LLM을 큰 규모로 돌릴 때 무엇이 달라지는지, 숫자와 메모리·패키징은 왜 중요해졌는지, 마지막으로 Linux와 컨테이너가 하드웨어를 실제 사용 환경에 어떻게 연결하는지 다룹니다.
+
+  모두 연산기 자체만으로는 설명할 수 없는 문제입니다. 원하는 모델과 서비스가 정해지면 컴파일러, 데이터 이동, 물리적인 조립 방식, 운영체제 경계까지 함께 맞아야 합니다. 화면의 주제를 누르면 해당 장으로 이동하고, 각 장 위의 Appendix index를 누르면 이 목록으로 돌아옵니다.}
+\end{frame}
+
+\section{Appendix · Other accelerators}
+% Appendix: other accelerator ecosystems. Original explanatory diagrams.
+\begin{frame}[label=app-amd]{AMD built a compute platform alongside its GPUs}
+  \begin{diagram}{4.45}
+    \node[lab,anchor=west] at (0,4.18) {A FEW MILESTONES · HARDWARE AND SOFTWARE TOGETHER};
+    \node[font=\large\bfseries,anchor=west] at (0,3.65) {2017};
+    \node[font=\large\bfseries,anchor=west] at (5.2,3.65) {2020};
+    \node[font=\large\bfseries,anchor=west] at (10.1,3.65) {2026};
+    \node[workbox,minimum width=4.15cm,minimum height=.75cm,font=\small] (a1) at (2.15,2.87) {ROCm + Radeon Instinct};
+    \node[workbox,minimum width=4.15cm,minimum height=.75cm,font=\small] (a2) at (7.25,2.87) {ROCm libraries + matrix kernels};
+    \node[workbox,minimum width=4.15cm,minimum height=.75cm,font=\small] (a3) at (12.3,2.87) {Frameworks / HIP / libraries};
+    \draw[flow] (a1)--(a2); \draw[flow] (a2)--(a3);
+    \foreach \xx/\id/\label in {2.15/gcn/{GCN compute units},7.25/cdna/{CDNA compute units},12.3/instinct/{Instinct compute chiplets}} {
+      \node[hwbox,minimum width=4.15cm,minimum height=1.4cm] (\id) at (\xx,1.42) {};
+      \node[font=\small] at (\xx,1.83) {\label};
+      \draw[flow,draw=work] (\xx,2.49)--(\xx,2.12);
+    }
+    \foreach \xx in {.85,1.72,2.59,3.46} {
+      \node[hwbox,minimum width=.71cm,minimum height=.4cm,inner sep=2pt,font=\scriptsize] at (\xx,1.12) {ALU};
+    }
+    \foreach \xx/\label in {5.85/ALU,6.75/ALU,7.72/Matrix,8.75/Matrix} {
+      \node[hwbox,minimum width=.84cm,minimum height=.4cm,inner sep=2pt,font=\scriptsize] at (\xx,1.12) {\label};
+    }
+    \foreach \xx in {11.05,11.91,12.77,13.63} {
+      \node[hwbox,minimum width=.73cm,minimum height=.4cm,inner sep=2pt,font=\scriptsize] at (\xx,1.12) {CUs};
+    }
+    \node[membox,minimum width=2.1cm,minimum height=.38cm,inner sep=2pt,font=\scriptsize] (hbm) at (12.3,.24) {HBM};
+    \draw[flow,draw=mem,<->] (hbm)--(instinct);
+    \node[lab,anchor=west] at (0,.28) {CDNA emphasizes AI / HPC; Radeon graphics follows the RDNA line.};
+  \end{diagram}
+  \takeaway{The alternative is a hardware, compiler, library, and tooling stack.}
+  \credit{}{\href{https://ir.amd.com/news-events/press-releases/detail/779/amd-reports-second-quarter-2017-financial-results}{AMD 2017 results} · \href{https://www.amd.com/content/dam/amd/en/documents/instinct-business-docs/white-papers/amd-cdna-white-paper.pdf}{CDNA white paper, pp. 2--7} · \href{https://www.amd.com/en/technologies/cdna.html}{CDNA architecture} · illustrative units}
+  \note{그동안 AMD도 GPU로 범용 계산을 하고 있었습니다. 2017년 Radeon Instinct에도 ROCm 소프트웨어를 함께 제공했고, 2020년 CDNA에서는 기존 스칼라·벡터 연산에 행렬 실행부를 더했습니다. 그래픽에 집중한 RDNA와 데이터센터 계산에 집중한 CDNA가 갈라진 것이지요.
+
+  오른쪽의 오늘날 Instinct도 계산 칩렛과 HBM만으로 완성되지 않습니다. 프레임워크가 라이브러리와 커널을 선택하고 컴파일러와 런타임이 실제 장치에 연결해줘야 합니다. 그래서 AMD의 대응은 GPU 제품 하나가 아니라 ROCm이라는 소프트웨어 플랫폼을 함께 만드는 일이었습니다. 그 안에서 CUDA 경험을 가져오는 통로가 HIP입니다.}
+\end{frame}
+
+\begin{frame}[label=app-hip]{HIP moves source code to a different GPU stack}
+  \begin{diagram}{4.3}
+    \node[workbox,minimum width=2.55cm,minimum height=.85cm,font=\small] (cuda) at (1.55,2.25) {CUDA C++ source};
+    \node[plainbox,minimum width=2.35cm,minimum height=.85cm,font=\small] (port) at (5.1,2.25) {HIPIFY\\+ manual port};
+    \node[workbox,minimum width=2.3cm,minimum height=.85cm,font=\small] (hip) at (8.55,2.25) {HIP C++ source};
+    \node[plainbox,minimum width=2.75cm,minimum height=.85cm,font=\small] (build) at (12.25,2.25) {AMD compilation\\+ ROCm runtime};
+    \draw[flow] (cuda)--(port); \draw[flow] (port)--(hip); \draw[flow] (hip)--(build);
+    \node[lab,align=center] at (5.1,3.25) {API translation\\and library replacements};
+    \node[lab,align=center] at (8.55,3.25) {C++ kernel language\\+ host runtime API};
+    \node[hwbox,minimum width=2.75cm,minimum height=.7cm,font=\small] (amd) at (12.25,.72) {AMD GPU};
+    \draw[flow] (build)--node[right,lab] {AMD code} (amd);
+    \node[plainbox,minimum width=7.3cm,minimum height=.76cm,font=\small] at (4.15,.72) {Rebuild, replace unsupported features, test, then tune.};
+  \end{diagram}
+  \takeaway{Source portability does not imply CUDA binary or performance compatibility.}
+  \credit{https://rocm.docs.amd.com/projects/HIP/en/latest/what_is_hip.html}{AMD · What is HIP? · C++ runtime API, kernel language, HIPIFY, and porting limits}
+  \note{HIP는 Heterogeneous-compute Interface for Portability의 약자입니다. ROCm에서 GPU 커널 언어와 메모리·실행을 제어하는 호스트 API를 제공합니다. CUDA C++와 닮아 있어서 HIPIFY로 많은 호출을 변환할 수 있습니다.
+
+  하지만 이미 빌드한 CUDA 실행 파일을 AMD GPU가 그대로 읽는다는 뜻은 아닙니다. 그림처럼 소스를 옮겨 AMD용으로 다시 컴파일합니다. 지원하지 않는 API나 라이브러리를 바꾸고, 정확성을 확인한 뒤 하드웨어에 맞게 튜닝해야 합니다. 프레임워크가 이 작업을 대신해주는 경우도 있지만, 사용자 정의 CUDA 커널이 있으면 이식 작업이 다시 드러납니다.}
+\end{frame}
+
+\begin{frame}[label=app-tpu]{TPUs start from neural-network dataflow}
+  \begin{diagram}{4.45}
+    \node[workbox,minimum width=3.4cm,minimum height=.7cm,font=\small] (jax) at (1.9,3.75) {JAX model + array sharding};
+    \node[plainbox,minimum width=3.4cm,minimum height=.7cm,font=\small] (xla) at (1.9,2.55) {XLA: compile and partition};
+    \node[plainbox,minimum width=3.4cm,minimum height=.7cm,font=\small] (rt) at (1.9,1.35) {TPU runtime};
+    \draw[flow] (jax)--(xla); \draw[flow] (xla)--(rt);
+    \node[lab,align=left,anchor=west] at (.2,.35) {Also: PyTorch/TPU integrations\\XLA can target GPUs, too.};
+    \draw[rounded corners=3pt,draw=hwBorder,fill=hwLight,line width=.7pt] (5.0,.45) rectangle (10.95,4.12);
+    \node[font=\small\bfseries,anchor=west] at (5.25,3.83) {TPU · matrix path};
+    \node[membox,minimum width=1.1cm,minimum height=.85cm,font=\small] (tm) at (5.85,1.92) {HBM};
+    \foreach \xx in {0,1,2,3} \foreach \yy in {0,1,2} {
+      \node[hwbox,minimum width=.68cm,minimum height=.51cm,inner sep=2pt,font=\scriptsize] (mac\xx\yy) at (7.28+.87*\xx,1.65+.68*\yy) {MAC};
+    }
+    \foreach \xx in {0,1,2} \foreach \yy in {0,1,2} {
+      \pgfmathtruncatemacro{\nx}{\xx+1}
+      \draw[-{Stealth[length=1.2mm]},draw=mem,line width=.6pt] (mac\xx\yy)--(mac\nx\yy);
+    }
+    \foreach \xx in {0,1,2,3} \foreach \yy in {0,1} {
+      \pgfmathtruncatemacro{\ny}{\yy+1}
+      \draw[-{Stealth[length=1.2mm]},draw=mem,line width=.6pt] (mac\xx\ny)--(mac\xx\yy);
+    }
+    \node[membox,minimum width=1.1cm,minimum height=.55cm,inner sep=2pt,font=\scriptsize] (tb) at (5.85,3.01) {Buffer};
+    \draw[flow,draw=mem] (tm)--(tb);
+    \draw[flow,draw=mem] (tb)--(mac02);
+    \node[lab] at (8.6,.88) {Reuse values inside the matrix array};
+    \draw[flow,draw=work] (rt.east)--(4.45,1.35)--(4.45,3.32)--(5,3.32);
+    \foreach \yy/\id in {3.36/t1,2.15/t2,.94/t3} {
+      \node[hwbox,minimum width=2.6cm,minimum height=.69cm,font=\small] (\id) at (13.25,\yy) {Other TPU chips};
+    }
+    \draw[flow,<->] (11,2.15)--node[above,lab] {links} (t2);
+    \draw[flow,<->] (t1)--(t2); \draw[flow,<->] (t2)--(t3);
+  \end{diagram}
+  \takeaway{The compiler maps tensor work and communication onto an ML-focused machine.}
+  \credit{}{\href{https://docs.cloud.google.com/tpu/docs/system-architecture-tpu-vm}{Google · TPU architecture} · \href{https://docs.cloud.google.com/tpu/docs/jax-ai-stack}{JAX stack} · \href{https://research.google/pubs/in-datacenter-performance-analysis-of-a-tensor-processing-unit/}{TPU, ISCA 2017} · selected datapath, illustrative array and topology}
+  \note{TPU, Tensor Processing Unit은 Google이 머신러닝을 위해 설계한 전용 프로세서입니다. 서비스 추론의 지연시간과 전력 비용을 줄이는 데서 출발해, 학습 처리량과 대규모 연결로 확장했습니다. 행렬 실행부에서는 곱셈·누산 회로 사이로 값을 흘려보내며 재사용합니다. 물론 메모리와 다른 종류의 연산부도 필요합니다.
+
+  왼쪽은 JAX의 대표 경로입니다. 배열 계산과 분할 방식을 XLA가 컴파일해 TPU와 여러 칩 사이에 배치합니다. PyTorch 연동도 있고 XLA는 GPU도 지원합니다. 차이는 특정 언어의 독점이 아니라 출발점입니다. 그래픽에서 범용 커널로 확장한 GPU에 비해 TPU는 텐서 계산·컴파일러·분산 시스템을 중심으로 발전했습니다.}
+\end{frame}
+
+\begin{frame}[label=app-npu]{NPU startups compete on the complete inference service}
+  \begin{diagram}{4.45}
+    \node[workbox,minimum width=4cm,minimum height=.72cm,font=\small] (model) at (2.25,3.62) {A supported PyTorch / HF model};
+    \node[lab,align=left,anchor=west] at (.25,2.1) {Target:\\latency, tokens per watt,\\and deployment cost};
+    \node[font=\small\bfseries,anchor=west] at (5.2,4.15) {FuriosaAI};
+    \node[font=\small\bfseries,anchor=west] at (10.2,4.15) {Rebellions};
+    \node[workbox,minimum width=4.2cm,minimum height=.88cm,font=\small] (fsw) at (7.3,3.3) {Furiosa compiler\\+ LLM serving};
+    \node[workbox,minimum width=4.2cm,minimum height=.88cm,font=\small] (rsw) at (12.3,3.3) {RBLN Compiler\\+ Optimum / vLLM integration};
+    \draw[flow] (model.east)--(4.75,3.62)--(4.75,3.3)--(fsw.west);
+    \draw[flow] (model.north)--(2.25,4.08)--(4.7,4.08)--(4.7,4.44)--(9.6,4.44)--(9.6,3.3)--(rsw.west);
+    \foreach \xx/\id/\label in {7.3/fhw/{RNGD: tensor processors},12.3/rhw/{Rebellions inference NPU}} {
+      \node[hwbox,minimum width=4.2cm,minimum height=1.38cm] (\id) at (\xx,1.65) {};
+      \node[font=\small] at (\xx,2.03) {\label};
+      \foreach \dx in {-1.3,-.45,.4,1.25} {
+        \node[hwbox,minimum width=.71cm,minimum height=.4cm,inner sep=2pt,font=\scriptsize] at (\xx+\dx,1.32) {Unit};
+      }
+      \draw[flow,draw=work] (\xx,2.86)--(\xx,2.34);
+    }
+    \node[lab,align=left,anchor=west] at (.25,.32) {Check the supported operators, shapes, quantization, and serving features for the actual model.};
+  \end{diagram}
+  \takeaway{Specialized hardware needs a compiler and serving stack that keep up with models.}
+  \credit{}{\href{https://furiosa.ai/blog/furiosa-sdk-2026-2}{Furiosa SDK 2026.2} · \href{https://rebellions.ai/rebellions-product/rebellions-inference-platform/}{Rebellions Inference Platform} · examples of inference-focused NPUs; conceptual units}
+  \note{NPU는 Neural Processing Unit, 신경망 계산용 프로세서라는 넓은 이름입니다. 모두 같은 구조도, 모두 추론 전용도 아닙니다. 여기서는 데이터센터 추론에 집중하는 두 회사를 봅니다. Furiosa는 RNGD와 컴파일러·서빙 엔진을, Rebellions는 NPU와 RBLN 컴파일러·프레임워크 연동을 함께 만듭니다.
+
+  목표는 같은 서비스를 요구 지연시간 안에서 더 적은 전력과 비용으로 제공하는 것입니다. 하지만 새로운 모델을 실제로 실행하려면 연산, 텐서 모양, 숫자 형식, KV 관리까지 소프트웨어가 지원해야 합니다. 그래서 칩의 최대 연산량만 비교하면 핵심을 놓칩니다. 실제 모델의 품질과 지연시간, 처리량을 함께 확인해야 합니다.}
+\end{frame}
+
+\begin{frame}[label=app-cerebras]{Cerebras makes the wafer itself a compute fabric}
+  \begin{diagram}{4.45}
+    \node[workbox,minimum width=4.5cm,minimum height=.74cm,font=\small] (cm) at (2.5,3.65) {PyTorch model};
+    \node[plainbox,minimum width=4.5cm,minimum height=.88cm,font=\small] (cc) at (2.5,2.35) {Cerebras compiler\\places work across the wafer};
+    \draw[flow] (cm)--(cc);
+    \node[membox,text width=4.1cm,minimum height=1.05cm,font=\small] (mx) at (2.5,.85) {MemoryX / host memory\\weight-streaming training};
+    \draw[draw=hwBorder,fill=hwLight,rounded corners=3pt,line width=.8pt] (6.1,.55) rectangle (10.15,4.3);
+    \foreach \xx in {0,1,2,3} \foreach \yy in {0,1,2,3} {
+      \draw[hwBorder,line width=.6pt] (6.72+.91*\xx,1.1+.87*\yy)--(9.45,1.1+.87*\yy);
+      \draw[hwBorder,line width=.6pt] (6.72+.91*\xx,1.1)--(6.72+.91*\xx,3.71);
+    }
+    \foreach \xx in {0,1,2,3} \foreach \yy in {0,1,2,3} {
+      \node[hwbox,minimum width=.73cm,minimum height=.58cm,inner sep=1pt,font=\fontsize{8}{9}\selectfont] at (6.72+.91*\xx,1.1+.87*\yy) {Core\\\textcolor{mem}{SRAM}};
+    }
+    \draw[flow,draw=work] (cc.east)--(5.35,2.35)--(5.35,3.65)--(6.1,3.65);
+    \draw[flow,draw=mem,<->] (mx.east)--(6.1,.9);
+    \node[font=\large\bfseries,align=left,anchor=west] at (10.7,3.5) {WSE-3 · 2024};
+    \node[font=\Large\bfseries,anchor=west] at (10.7,2.65) {900,000};
+    \node[lab,anchor=west] at (10.7,2.15) {AI compute cores};
+    \node[font=\Large\bfseries,anchor=west] at (10.7,1.4) {44 GB};
+    \node[lab,anchor=west] at (10.7,.9) {on-chip SRAM};
+    \node[lab,anchor=west] at (6.1,.18) {Connected core + local-memory tiles; illustrative count};
+  \end{diagram}
+  \takeaway{Move much more compute and memory onto one fabric; the system boundary still matters.}
+  \credit{}{\href{https://www.cerebras.ai/press-release/cerebras-announces-third-generation-wafer-scale-engine}{Cerebras · WSE-3 announcement, March 2024} · \href{https://www.cerebras.ai/blog/supporting-pytorch-on-the-cerebras-wafer-scale-engine}{PyTorch compiler} · \href{https://training-api.cerebras.ai/en/1.9.1/wsc/cerebras-basics/cerebras-execution-modes.html}{Weight streaming}}
+  \note{보통은 웨이퍼를 개별 칩으로 잘라냅니다. Cerebras는 그 경계까지 연결해서, 웨이퍼 규모의 연결망에 계산 코어와 SRAM을 반복 배치합니다. 2024년 WSE-3는 90만 개 코어와 44GB의 칩 내부 SRAM을 가진 예입니다. GPU의 HBM 용량과는 메모리 종류와 위치부터 다릅니다.
+
+  컴파일러는 모델의 일을 이 거대한 공간에 배치합니다. 그렇다고 모델과 데이터가 언제나 웨이퍼 안에 전부 들어간다는 뜻은 아닙니다. 큰 모델의 학습에는 외부 MemoryX에서 가중치를 흘려보내는 방식도 씁니다. 계산과 저장을 가까이 놓는 선택을 극단까지 밀어붙였지만, 외부 메모리·입출력·전력·냉각을 포함한 시스템 설계는 여전히 필요합니다.}
+\end{frame}
+
+\section{Appendix · LLMs and data centers}
+% Appendix: LLM work, cluster scale, and the network around the GPU.
+\begin{frame}[label=app-training]{Training keeps much more than the model weights}
+  \begin{diagram}{4.45}
+    \foreach \xx/\title/\sub in {2.2/Forward/predict + compute loss,7.4/Backward/compute gradients,12.6/Optimizer/update the weights} {
+      \node[workbox,minimum width=4.1cm,minimum height=.68cm,font=\small] (stage) at (\xx,4.03) {\textbf{\title}\\[-.03cm]{\scriptsize\sub}};
+      \draw[draw=work,line width=.8pt] (stage.south) -- (\xx,3.34);
+    }
+    \draw[flow] (4.28,4.03) -- (5.32,4.03);
+    \draw[flow] (9.48,4.03) -- (10.52,4.03);
+    \draw[draw=work,line width=.8pt] (2.2,3.34) -- (12.6,3.34);
+    \draw[flow,draw=work] (7.4,3.34) -- (7.4,3.05);
+    \node[hwbox,minimum width=14.2cm,minimum height=1.12cm] at (7.4,2.49) {};
+    \node[font=\scriptsize\bfseries,text=hw,anchor=west] at (.55,2.80) {GPU};
+    \foreach \xx in {2.8,5.8,8.8,11.8} {
+      \node[hwbox,fill=hw!12,text width=2.48cm,minimum height=.69cm,inner sep=2pt,font=\scriptsize] at (\xx,2.38) {\textbf{SM}\\[-.02cm]matrix + other units};
+    }
+    \draw[flow,draw=mem,<->] (7.4,1.93) -- (7.4,1.58);
+    \draw[draw=mem,line width=.8pt] (2.05,1.58) -- (12.65,1.58);
+    \foreach \xx/\label in {2.05/Weights,5.58/Activations,9.11/Gradients,12.65/Optimizer state} {
+      \draw[flow,draw=mem,<->] (\xx,1.58) -- (\xx,1.19);
+      \node[membox,minimum width=3.05cm,minimum height=.6cm,font=\small] at (\xx,.89) {\label};
+    }
+    \node[lab] at (7.4,.21) {HBM holds tensor state. Sharding spreads state across GPUs; recomputation can save activations.};
+  \end{diagram}
+  \takeaway{Fitting the weights is only the start of fitting a training job.}
+  \credit{https://arxiv.org/abs/1910.02054}{Rajbhandari et al. · ZeRO (2019/2020), §§3--4 · original schematic; physical counts illustrative}
+  \note{LLM 학습은 예측 한 번으로 끝나지 않습니다. Forward에서 예측과 손실을 계산하고, backward에서 가중치를 얼마나 바꿀지 gradient를 구한 뒤, optimizer가 갱신합니다. 세 단계는 같은 GPU의 실행 자원을 사용하지만 필요한 커널이 다릅니다.
+
+  HBM에는 가중치 외에도 중간 activation, gradient, optimizer의 이력 상태가 필요합니다. 정확한 양은 학습 방법과 숫자 형식에 따라 달라집니다. ZeRO 같은 방식은 상태를 여러 GPU에 나눠 담고, activation 재계산은 일부 저장 공간을 계산 시간과 맞바꿉니다. 그래서 모델 파일이 GPU 메모리에 들어간다고 그대로 학습할 수 있는 것은 아닙니다.}
+\end{frame}
+
+\begin{frame}[label=app-serving]{LLM serving schedules tokens and memory together}
+  \begin{diagram}{4.45}
+    \node[workbox,minimum width=3.7cm,minimum height=.83cm,font=\small] (sched) at (2.15,3.83) {\textbf{Serving scheduler}\\[-.02cm]{\scriptsize e.g., vLLM / TensorRT-LLM}};
+    \node[workbox,minimum width=4.15cm,minimum height=.83cm,font=\small] (first) at (7.22,3.83) {\textbf{Iteration $t$}\\[-.02cm]{\scriptsize A: decode\quad B: prefill chunk}};
+    \node[workbox,minimum width=4.15cm,minimum height=.83cm,font=\small] (second) at (12.5,3.83) {\textbf{Iteration $t+1$}\\[-.02cm]{\scriptsize B: decode\quad C: prefill chunk}};
+    \draw[flow,draw=work] (sched.east) -- (first.west);
+    \draw[flow,draw=work] (first.east) -- node[above,font=\tiny,text=muted] {A finishes} (second.west);
+    \node[plainbox,minimum width=3.7cm,minimum height=2.4cm,align=left,font=\scriptsize] at (2.15,1.86) {New requests arrive\\[.22cm]Prefill chunks limit stalls\\[.22cm]More batching reuses weights\\[.22cm]More live tokens need KV space};
+    \node[hwbox,minimum width=9.9cm,minimum height=2.4cm] at (9.9,1.86) {};
+    \node[font=\scriptsize\bfseries,text=hw] at (9.9,2.84) {GPU EXECUTES THE SELECTED TOKEN BATCH};
+    \foreach \xx in {7.22,12.5} {\draw[flow,draw=work] (\xx,3.41) -- (\xx,3.06);}
+    \foreach \xx in {6.35,8.7,11.05,13.4} {
+      \node[hwbox,fill=hw!12,minimum width=1.9cm,minimum height=.52cm,font=\scriptsize] at (\xx,2.28) {SM};
+      \draw[flow,draw=mem,<->] (\xx,2.02) -- (\xx,1.74);
+    }
+    \draw[draw=mem,line width=.8pt] (6.35,1.74) -- (13.4,1.74);
+    \node[membox,minimum width=3.9cm,minimum height=.6cm,font=\scriptsize] (weights) at (7.5,1.19) {HBM: shared model weights};
+    \node[membox,minimum width=4.3cm,minimum height=.6cm,font=\scriptsize] (kv) at (12.0,1.19) {HBM: software-managed KV blocks};
+    \draw[flow,draw=mem,<->] (7.5,1.74) -- (weights.north);
+    \draw[flow,draw=mem,<->] (12,1.74) -- (kv.north);
+    \node[lab] at (7.4,.17) {Illustrative schedule. The best mix depends on model, context, hardware, and latency target.};
+  \end{diagram}
+  \takeaway{Serving balances time to first token, time between tokens, throughput, and memory.}
+  \credit{}{\href{https://arxiv.org/abs/2309.06180}{Kwon et al. · PagedAttention / vLLM (2023)}\quad\href{https://developer.nvidia.com/blog/streamlining-ai-inference-performance-and-deployment-with-nvidia-tensorrt-llm-chunked-prefill/}{NVIDIA · TensorRT-LLM chunked prefill (2024)}}
+  \note{서비스에서는 길이가 다른 요청이 계속 들어옵니다. 그림에서 A가 끝나면 다음 반복에 C를 넣습니다. 긴 B의 입력도 작은 prefill 조각으로 나누면 이미 답변 중인 요청이 오래 기다리는 일을 줄일 수 있습니다.
+
+  여러 요청을 묶으면 가중치를 읽어 더 많은 토큰의 계산에 재사용할 수 있습니다. 대신 살아 있는 요청의 KV 상태를 더 많이 보관해야 합니다. vLLM과 TensorRT-LLM 같은 실행기는 토큰 스케줄과 메모리 관리를 함께 다룹니다. KV는 SM의 하드웨어 캐시가 아니라 HBM 등에 저장하는 소프트웨어 상태입니다. 첫 답변까지의 시간, 토큰 사이 간격, 전체 처리량을 동시에 좋게 만드는 단일 batch 크기는 없습니다.}
+\end{frame}
+
+\begin{frame}[label=app-parallel]{Splitting a model creates different kinds of traffic}
+  \begin{diagram}{4.4}
+    \draw[draw=line] (4.86,.4) -- (4.86,4.28);
+    \draw[draw=line] (9.87,.4) -- (9.87,4.28);
+    \node[font=\small\bfseries,text=work] at (2.35,4.08) {Data parallel};
+    \node[font=\small\bfseries,text=work] at (7.35,4.08) {Tensor parallel};
+    \node[font=\small\bfseries,text=work] at (12.35,4.08) {Pipeline parallel};
+    \foreach \xx/\model/\batch in {1.22/model/batch A,3.48/model/batch B,6.22/left slice/same tokens,8.48/right slice/same tokens} {
+      \node[font=\scriptsize,text=work] at (\xx,3.63) {\batch};
+      \node[hwbox,minimum width=1.9cm,minimum height=.97cm] at (\xx,2.95) {};
+      \node[font=\scriptsize\bfseries,text=hw] at (\xx,3.21) {GPU};
+      \node[workbox,minimum width=1.5cm,minimum height=.35cm,inner sep=2pt,font=\scriptsize] at (\xx,2.77) {\model};
+    }
+    \node[lab] at (2.35,2.13) {gradients};
+    \node[lab] at (7.35,2.13) {partial results};
+    \node[workbox,minimum width=4.15cm,minimum height=.68cm,font=\scriptsize] (dpcomm) at (2.35,1.46) {Synchronize updates\\AllReduce / ReduceScatter};
+    \node[workbox,minimum width=4.15cm,minimum height=.68cm,font=\scriptsize] (tpcomm) at (7.35,1.46) {Combine / exchange results\\collectives inside model layers};
+    \foreach \xx/\dx in {1.22/-1.13,3.48/1.13} {\draw[flow,draw=mem,<->] (\xx,2.46) -- ([xshift=\dx cm]dpcomm.north);}
+    \foreach \xx/\dx in {6.22/-1.13,8.48/1.13} {\draw[flow,draw=mem,<->] (\xx,2.46) -- ([xshift=\dx cm]tpcomm.north);}
+    \foreach \yy/\label in {3.2/early layers,1.9/later layers} {
+      \node[hwbox,minimum width=3.6cm,minimum height=.79cm] at (12.35,\yy) {};
+      \node[font=\scriptsize\bfseries,text=hw,anchor=west] at (10.75,\yy) {GPU};
+      \node[workbox,minimum width=2.3cm,minimum height=.4cm,inner sep=2pt,font=\scriptsize] at (12.86,\yy) {\label};
+    }
+    \draw[flow,draw=mem] (11.9,2.80) -- (11.9,2.30);
+    \draw[flow,draw=mem] (12.8,2.30) -- (12.8,2.80);
+    \node[font=\tiny,text=mem,anchor=east] at (11.76,2.54) {activations};
+    \node[font=\tiny,text=mem,anchor=west] at (12.94,2.54) {gradients};
+    \node[lab,align=center] at (2.35,.40) {Different samples; same model\\state may also be sharded};
+    \node[lab,align=center] at (7.35,.40) {Different pieces of each tensor\\frequent communication};
+    \node[lab,align=center] at (12.35,.40) {Different layers; micro-batches\\pipeline bubbles can leave GPUs idle};
+  \end{diagram}
+  \takeaway{Parallelism must fit both GPU memory and the network topology.}
+  \credit{https://arxiv.org/html/2407.21783v3\#S3.SS3.SSS2}{Llama Team · The Llama 3 Herd of Models (2024), §3.3.2 · original schematic; these strategies can be combined}
+  \note{GPU를 늘리는 방법도 여러 가지입니다. Data parallel은 서로 다른 샘플을 계산하고 gradient를 합쳐 갱신을 맞춥니다. 상태를 나눠 보관하는 방식도 결합할 수 있습니다.
+
+  Tensor parallel은 행렬 같은 tensor 자체를 나눠 계산하므로 모델의 층 안에서도 부분 결과가 자주 오갑니다. Pipeline parallel은 층을 나눠 맡아 forward의 activation과 backward의 gradient를 전달합니다. 작은 묶음을 흘려도 앞뒤 단계를 기다리는 빈 시간이 생길 수 있습니다.
+
+  실제 학습은 이런 방법을 조합합니다. 같은 GPU 수라도 자주 통신하는 작업을 멀리 떨어뜨리면 느려지므로, 소프트웨어의 분할 방식과 물리 연결을 함께 결정해야 합니다.}
+\end{frame}
+
+\begin{frame}[label=app-datacenter]{At cluster scale, one slow component can stall the job}
+  \begin{diagram}{4.45}
+    \node[font=\scriptsize\bfseries,text=work] at (5.35,4.20) {ONE SYNCHRONOUS TRAINING JOB};
+    \draw[rounded corners=3pt,draw=line,fill=blackPrimary!1] (.15,.94) rectangle (10.7,3.86);
+    \foreach \xx/\label in {1.93/server A,5.40/server B,8.87/server C} {
+      \node[hwbox,minimum width=2.9cm,minimum height=1.43cm] at (\xx,2.91) {};
+      \node[font=\scriptsize\bfseries,text=hw] at (\xx,3.39) {\label};
+      \foreach \dx in {-.64,.64} {\node[hwbox,fill=hw!15,minimum width=.98cm,minimum height=.61cm,font=\scriptsize] at (\xx+\dx,2.86) {GPU};}
+      \draw[flow,draw=mem,<->] (\xx,2.19) -- (\xx,1.63);
+    }
+    \node[font=\tiny\bfseries,text=muted] at (9.52,2.40) {slow / failed};
+    \node[hwbox,minimum width=9.8cm,minimum height=.61cm,font=\scriptsize] (fabric) at (5.4,1.32) {Network fabric\quad\textcolor{work}{collective waits for participants}};
+    \node[hwbox,text width=3.15cm,minimum height=1.1cm,inner sep=4pt,font=\scriptsize] (facility) at (12.88,3.36) {Power delivery + cooling\\load swings\\thermal limits};
+    \draw[flow] (facility.west) -- (10.7,3.36);
+    \node[membox,minimum width=3.55cm,minimum height=.85cm,font=\scriptsize] (storage) at (12.88,1.33) {Persistent checkpoint storage\\recover model + training state};
+    \draw[flow,draw=mem] (fabric.east) -- (storage.west);
+    \node[lab,align=center] at (12.88,2.35) {Checkpoint bursts compete\\for storage throughput};
+    \node[lab,align=center] at (7.4,.35) {Stragglers waste peer time\qquad Failures require recovery\qquad Facilities limit sustained work};
+  \end{diagram}
+  \takeaway{Useful training time depends on the whole facility, including recovery.}
+  \credit{https://arxiv.org/html/2407.21783v3\#S3.SS3.SSS4}{Llama Team · The Llama 3 Herd of Models (2024), §§3.3.1, 3.3.4 · reported production-cluster challenges}
+  \note{동기식 학습에서는 한 GPU나 연결이 느려져도 함께 통신하는 GPU들이 기다릴 수 있습니다. 고장이면 저장해둔 학습 상태로 복구해야 하고, 상태를 자주 저장하면 손실은 줄지만 스토리지에 큰 쓰기 부하가 생깁니다.
+
+  Meta의 Llama 3 논문에는 이런 문제가 실제 운영 경험으로 나옵니다. GPU들이 계산하다 동시에 통신이나 저장을 기다리면 데이터센터 전력 사용량도 함께 바뀝니다. 온도에 따른 동작 속도 변화 역시 전체 처리량에 영향을 줬습니다. 그래서 대규모 학습은 GPU 개수만의 문제가 아닙니다. 장애 탐지와 복구, 네트워크, 저장 장치, 전력과 냉각이 실제로 학습하는 시간을 결정합니다.}
+\end{frame}
+
+\begin{frame}[label=app-networking]{NVIDIA also builds the paths between GPUs}
+  \begin{diagram}{4.55}
+    \node[workbox,minimum width=14.25cm,minimum height=.62cm,font=\small] at (7.4,4.20) {\textbf{NCCL}\quad AllReduce / AllGather / ReduceScatter\quad{\scriptsize tensor operations in software}};
+    \draw[flow,draw=work] (3.55,3.89) -- (3.55,3.59);
+    \draw[flow,draw=work] (11.22,3.89) -- (11.22,3.59);
+    \draw[rounded corners=3pt,draw=hwBorder,fill=hwLight] (.2,.83) rectangle (7.0,3.57);
+    \node[font=\scriptsize\bfseries,text=hw] at (3.6,3.31) {SCALE UP: AN NVLINK DOMAIN};
+    \node[hwbox,fill=hw!20,minimum width=1.9cm,minimum height=.68cm,font=\scriptsize] (nvs) at (3.6,2.17) {NVLink switch\\(NVSwitch)};
+    \foreach \xx/\yy in {1.25/2.70,5.95/2.70,1.25/1.56,5.95/1.56} {
+      \node[hwbox,fill=white,minimum width=1.30cm,minimum height=.56cm,font=\scriptsize] (gpu) at (\xx,\yy) {GPU};
+      \draw[flow,draw=mem,<->] (gpu) -- (nvs);
+    }
+    \node[font=\tiny,text=mem] at (3.6,2.81) {NVLink data paths};
+    \node[lab] at (3.6,1.04) {Server or rack scale, depending on the system};
+    \node[font=\scriptsize\bfseries,text=hw] at (11.22,3.40) {SCALE OUT: CONNECT GPU DOMAINS};
+    \foreach \xx/\label in {9.35/A,13.1/B} {
+      \node[hwbox,minimum width=2.8cm,minimum height=.53cm,font=\scriptsize] (domain) at (\xx,2.87) {GPU domain \label};
+      \node[hwbox,minimum width=2.8cm,minimum height=.53cm,font=\scriptsize] (nic) at (\xx,1.93) {ConnectX network adapter};
+      \draw[flow,draw=mem,<->] (domain.south) -- (nic.north);
+      \draw[flow,draw=mem,<->] (nic.south) -- (\xx,1.34);
+    }
+    \node[hwbox,minimum width=6.55cm,minimum height=.66cm,font=\scriptsize] at (11.22,1.0) {Quantum InfiniBand \textbf{or} Spectrum Ethernet switches};
+    \node[lab] at (7.4,.27) {Mellanox joined NVIDIA in 2020. BlueField DPUs offload networking, storage, and infrastructure services.};
+  \end{diagram}
+  \takeaway{Fast GPUs need fast communication; NCCL chooses how tensor data moves over hardware.}
+  \credit{}{\href{https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/overview.html}{NVIDIA NCCL overview}\quad\href{https://www.nvidia.com/en-us/networking/}{NVIDIA networking platform}\quad\href{https://nvidianews.nvidia.com/news/nvidia-completes-acquisition-of-mellanox-creating-major-force-driving-next-gen-data-centers}{Mellanox acquisition (2020-04-27)}}
+  \note{GPU가 데이터를 기다리는 시간을 줄이려면 GPU 사이 연결도 개선해야 합니다. 왼쪽 NVLink와 NVSwitch는 서버나 랙 안에서 긴밀한 GPU 연결 영역을 만듭니다. 오른쪽은 ConnectX 같은 어댑터와 InfiniBand 또는 Ethernet 스위치로 그 영역들을 연결합니다.
+
+  맨 위 NCCL은 통신 프로토콜이나 칩이 아니라, tensor를 합치고 모으는 집단 통신 라이브러리입니다. 실제 장비의 연결에 맞춰 데이터를 옮깁니다. NVIDIA는 2020년 Mellanox 인수를 마쳤고, 네트워킹 제품군을 함께 갖추게 됐습니다. BlueField는 네트워크와 스토리지 등 인프라 처리를 맡습니다. 개별 GPU의 계산 성능을 전체 서비스의 처리량으로 연결하는 범위까지 넓어진 것입니다.}
+\end{frame}
+
+\section{Appendix · Bits and data movement}
+% Appendix: formats, memory traffic, and physical integration.
+\begin{frame}[label=app-formats]{A number's bits buy range, precision, and cost}
+  \begin{diagram}{4.4}
+    \node[lab,anchor=west] at (0,4.12) {STORED FLOATING-POINT VALUES · equal width per bit};
+    \foreach \yy/\name/\ee/\ff in {3.38/FP32/8/23,2.55/FP16/5/10,1.72/BF16/8/7} {
+      \node[anchor=west,font=\small\bfseries] at (0,\yy) {\name};
+      \filldraw[fill=muted!25,draw=white] (1.5,\yy-.25) rectangle ++(.22,.5);
+      \filldraw[fill=mem!45,draw=white] (1.72,\yy-.25) rectangle ++({\ee*.22},.5);
+      \filldraw[fill=mem!12,draw=memBorder] ({1.72+\ee*.22},\yy-.25) rectangle ++({\ff*.22},.5);
+      \node[font=\scriptsize] at ({1.72+\ee*.11},\yy) {\ee};
+      \node[font=\scriptsize] at ({1.72+\ee*.22+\ff*.11},\yy) {\ff};
+    }
+    \node[lab,anchor=west] at (1.5,.96) {1 sign bit};
+    \node[lab,anchor=west,text=mem] at (3.55,.96) {Exponent: range};
+    \node[lab,anchor=west] at (6.65,.96) {Fraction: precision};
+    \draw[line] (9.0,1.0)--(9.0,3.9);
+    \node[anchor=west,font=\small,text width=5.1cm,align=left] at (9.45,3.23)
+      {\textbf{Same 16 bits, different choices}\\BF16 keeps FP32's exponent range.\\FP16 keeps more fraction bits.};
+    \node[anchor=west,font=\small,text width=5.1cm,align=left] at (9.45,1.69)
+      {\textbf{More bits still have a role}\\FP64 for demanding numerical work;\\FP32 for sensitive calculations.};
+    \node[membox,font=\scriptsize,minimum width=3.1cm,minimum height=.55cm] (tfstore) at (1.75,.23) {FP32 storage};
+    \node[hwbox,font=\scriptsize,minimum width=6.2cm,minimum height=.55cm] (tfcompute) at (7.4,.23) {TF32 Tensor Core mode: rounded inputs};
+    \node[membox,font=\scriptsize,minimum width=3.1cm,minimum height=.55cm] (tfacc) at (13.05,.23) {FP32 accumulation};
+    \draw[flow] (tfstore)--(tfcompute); \draw[flow] (tfcompute)--(tfacc);
+  \end{diagram}
+  \takeaway{Precision and range are different. TF32 is a compute mode for FP32 data.}
+  \credit{}{\href{https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/features/low_precision_training/introduction/introduction.html}{NVIDIA Transformer Engine · format comparison} · \href{https://developer.nvidia.com/blog/accelerating-ai-training-with-tf32-tensor-cores/}{NVIDIA · TF32 internals (2021)}}
+  \note{숫자 형식은 같은 수를 얼마나 넓은 범위에서, 얼마나 촘촘하게 표현할지 정합니다. 진한 부분인 지수는 범위, 연한 부분인 가수의 소수부는 정밀도에 쓰입니다. FP16과 BF16은 둘 다 16비트지만 배분이 다릅니다. BF16은 FP32와 지수 범위를 맞추고, FP16은 소수부를 더 남깁니다.
+
+  비트를 줄이면 저장과 이동량이 줄지만 계산 오차가 달라집니다. 정밀한 과학 계산에는 FP64, 민감한 계산에는 FP32가 계속 필요합니다. 아래 TF32는 별도의 19비트 저장 형식으로 쓰는 것이 아닙니다. FP32 입력을 Tensor Core의 곱셈 앞에서 반올림하고 FP32로 누적하는 계산 모드입니다. 저장 형식과 실행 방식부터 구분해야 합니다.}
+\end{frame}
+
+\begin{frame}[label=app-lowprecision]{Fewer bits need more numerical engineering}
+  \begin{diagram}{4.3}
+    \node[lab,anchor=west] at (0,4.05) {AN EXAMPLE LOW-PRECISION MATRIX PATH · supported hardware and kernels};
+    \node[membox,minimum width=2.5cm,minimum height=1.0cm,font=\small] (high) at (1.4,3.13) {Values in\\BF16 / FP16};
+    \node[workbox,minimum width=2.9cm,minimum height=1.0cm,font=\small] (quant) at (5.05,3.13) {Choose scales\\Round / quantize};
+    \node[membox,minimum width=3.0cm,minimum height=1.0cm,font=\small] (low) at (8.9,3.13) {FP8 / FP4 values\\+ scale metadata};
+    \node[hwbox,minimum width=2.85cm,minimum height=1.0cm,font=\small] (tc) at (12.98,3.13) {Tensor Cores\\Matrix arithmetic};
+    \draw[flow,draw=mem] (high)--(quant); \draw[flow,draw=mem] (quant)--(low); \draw[flow,draw=mem] (low)--(tc);
+    \node[membox,minimum width=3.0cm,minimum height=.73cm,font=\small] (acc) at (12.98,1.46) {Wider accumulation};
+    \draw[flow,draw=mem] (tc)--(acc);
+    \node[anchor=west,font=\small\bfseries] at (.1,1.85) {Smaller payload};
+    \foreach \y/\n/\label in {1.3/16/16-bit,.76/8/8-bit,.22/4/4-bit} {
+      \node[anchor=west,font=\scriptsize] at (.1,\y) {\label};
+      \foreach \i in {1,...,\n} \fill[mem!40] ({1.45+(\i-1)*.14},\y-.12) rectangle ++(.12,.24);
+    }
+    \node[anchor=west,font=\small,text width=6.0cm,align=left] at (4.7,1.14)
+      {\textbf{Spend precision where it matters}\\Scale by tensor or small block.\\Keep sensitive calculations wider.\\Check model quality after quantization.};
+    \node[lab,text width=3.2cm,align=center] at (12.98,.52) {INT8 / INT4:\\integer codes + scales};
+  \end{diagram}
+  \takeaway{The trend is mixed precision: smaller operands, selective precision, validated accuracy.}
+  \credit{}{\href{https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/examples/fp8_primer.html}{NVIDIA Transformer Engine · FP8 / FP4 and scaling} · \href{https://arxiv.org/abs/1710.03740}{Micikevicius et al. · Mixed Precision Training (2017)}}
+  \note{최근에는 FP8, FP4, INT8, INT4처럼 숫자 하나를 더 작게 표현하는 방식이 늘었습니다. 같은 메모리에 더 많이 넣고, 더 적은 비트를 움직이며, 지원하는 행렬 회로에서 처리량을 높이려는 것입니다. 하지만 파일의 비트 수만 줄이면 끝나지는 않습니다.
+
+  그림처럼 텐서나 작은 값 묶음에 맞는 스케일을 고르고, 반올림한 값과 스케일을 함께 보관합니다. FP 계열은 부동소수점, INT 계열은 정수 코드로 값을 표현합니다. 누적과 민감한 계산은 더 넓은 정밀도를 남길 수 있습니다. 학습에서는 작은 업데이트가 사라지지 않도록 FP32 상태를 유지하기도 합니다. 모든 연산을 4비트로 바꾸는 것이 아니라, 모델과 커널에 맞는 혼합 정밀도 조합을 검증하는 방향입니다.}
+\end{frame}
+
+\begin{frame}[label=app-hbm]{HBM widens the pipe; arithmetic still needs reuse}
+  \begin{diagram}{4.4}
+    \node[lab,anchor=west] at (0,4.16) {OUR STREAMING FP32 ADD · inputs read once, output written once};
+    \node[membox,minimum width=1.52cm,minimum height=.62cm,font=\small] (aa) at (.9,3.3) {A: 4 B};
+    \node[membox,minimum width=1.52cm,minimum height=.62cm,font=\small] (bb) at (2.8,3.3) {B: 4 B};
+    \node[hwbox,minimum width=1.3cm,minimum height=.62cm,font=\small] (add) at (4.62,3.3) {1 add};
+    \node[membox,minimum width=1.52cm,minimum height=.62cm,font=\small] (cc) at (6.44,3.3) {C: 4 B};
+    \draw[flow,draw=mem] (aa.south)--(.9,2.72)--(4.62,2.72)--(add.south);
+    \draw[flow,draw=mem] (bb.east)--(add.west); \draw[flow,draw=mem] (add.east)--(cc.west);
+    \node[anchor=west,font=\Large\bfseries] at (.1,2.12) {12 bytes / FLOP};
+    \node[anchor=west,font=\small,text width=7cm,align=left] at (.1,1.15)
+      {An illustrative \textbf{4 TB/s} memory system:\\$4\times10^{12}/12 \approx 0.33$ TFLOP/s\\\textcolor{muted}{Ideal bandwidth ceiling for this add, not GPU peak compute.}};
+    \draw[line] (7.5,.5)--(7.5,3.85);
+    \draw[plainbox] (8.0,1.32) rectangle (14.65,3.85);
+    \node[lab,anchor=west] at (8.22,3.63) {ONE PACKAGE · schematic cross-section};
+    \node[hwbox,text width=2.73cm,minimum height=1.05cm,font=\scriptsize] (gpu) at (10.0,2.6) {\textbf{GPU die}\\SMs + memory\\controllers};
+    \foreach \y in {2.07,2.31,2.55,2.79} \draw[membox,rounded corners=0pt] (12.18,\y) rectangle (14.25,{\y+.20});
+    \node[font=\scriptsize,text=mem] at (13.22,3.22) {HBM stack};
+    \draw[plainbox,rounded corners=0pt] (8.25,1.56) rectangle (14.4,1.91);
+    \node[font=\scriptsize] at (11.32,1.735) {Dense package wiring / interposer};
+    \foreach \x in {9.0,9.25,9.5,9.75,10.0,10.25,10.5,10.75} \draw[mem,line width=.7pt] (\x,2.08)--(\x,1.94);
+    \foreach \x in {12.45,12.7,12.95,13.2,13.45,13.7,13.95} \draw[mem,line width=.7pt] (\x,2.94)--(\x,1.94);
+    \node[lab,text width=6.3cm,align=left,anchor=west] at (8.12,.62)
+      {Many short parallel connections.\\Example: HBM3E has a 1024-bit data interface per stack.};
+  \end{diagram}
+  \takeaway{Bandwidth is bytes per second. Reusing each byte can matter as much as moving it faster.}
+  \credit{}{\href{https://www.micron.com/products/memory/hbm/hbm3e}{Micron · HBM3E interface} · \href{https://developer.nvidia.com/blog/inside-pascal/}{NVIDIA · HBM package topology} · A+B arithmetic: illustrative ideal bound}
+  \note{앞에서 계산한 A 더하기 B로 대역폭의 의미를 보겠습니다. FP32 입력 두 개를 읽고 결과 하나를 쓰면, 덧셈 한 번에 최소 12바이트를 옮깁니다. 예를 들어 초당 4테라바이트를 공급해도, 이 조건에서 가능한 덧셈은 이상적으로 초당 약 0.33테라 번입니다. 연산 회로의 최고 성능과는 다른 상한입니다.
+
+  HBM은 메모리를 여러 층으로 쌓고 GPU 가까이 배치해, 아주 많은 병렬 배선으로 연결합니다. HBM3E는 스택 하나의 데이터 폭이 1024비트입니다. 용량이나 한 번의 접근 지연과 초당 전송량은 구분해야 합니다. 배관을 넓혀도 데이터를 계속 다시 읽으면 한계가 있으므로, 알고리즘이 가까운 저장 공간에서 값을 재사용하는 것도 중요합니다.}
+\end{frame}
+
+\begin{frame}[label=app-fa]{FlashAttention avoids writing the huge score matrix}
+  \begin{diagram}{4.45}
+    \node[anchor=west,font=\small] at (0,4.16) {$O=\operatorname{softmax}(QK^{T}/\sqrt{d})V$ \quad · dense attention over $N$ tokens};
+    \node[anchor=west,font=\small\bfseries] at (.1,3.59) {Separate operations};
+    \node[anchor=west,font=\small\bfseries] at (7.75,3.59) {FlashAttention · tiled and fused};
+    \draw[membox] (.1,2.01) rectangle (6.97,3.17);
+    \node[lab,anchor=west,text=mem] at (.28,2.94) {HBM};
+    \node[font=\scriptsize] (qin) at (.88,2.49) {Q, K};
+    \node[membox,fill=white,minimum width=1.65cm,minimum height=.6cm,font=\scriptsize] (scores) at (2.8,2.49) {$S$: $N\times N$};
+    \node[membox,fill=white,minimum width=1.65cm,minimum height=.6cm,font=\scriptsize] (probs) at (4.83,2.49) {$P$: $N\times N$};
+    \node[font=\scriptsize] (vin) at (6.25,2.49) {V};
+    \draw[hwbox] (.1,.62) rectangle (6.97,1.53);
+    \node[workbox,minimum width=1.4cm,minimum height=.48cm,font=\scriptsize] (qk) at (.88,1.07) {$QK^T$};
+    \node[workbox,minimum width=1.5cm,minimum height=.48cm,font=\scriptsize] (soft) at (2.8,1.07) {softmax};
+    \node[workbox,minimum width=1.35cm,minimum height=.48cm,font=\scriptsize] (pv) at (4.83,1.07) {$PV$};
+    \node[membox,minimum width=.5cm,minimum height=.48cm,font=\scriptsize,inner sep=3pt] (baseout) at (6.48,1.07) {O};
+    \draw[flow,draw=mem] (qin)--(qk);
+    \draw[flow,draw=mem] (qk.north east)--(scores.south west);
+    \draw[flow,draw=mem] (scores)--(soft);
+    \draw[flow,draw=mem] (soft.north east)--(probs.south west);
+    \draw[flow,draw=mem] (probs)--(pv);
+    \draw[flow,draw=mem] (vin.south)--(6.25,1.83)--(pv.north east);
+    \draw[flow,draw=mem] (pv)--(baseout);
+    \node[lab,anchor=west] at (.1,.22) {Read / write large intermediates; finally store O in HBM.};
+    \draw[membox] (7.75,2.64) rectangle (14.65,3.17);
+    \node[font=\scriptsize] (fqkv) at (9.25,2.91) {HBM: Q, K, V};
+    \node[font=\scriptsize] (fo) at (13.2,2.91) {HBM: output O};
+    \draw[hwbox] (7.75,.62) rectangle (14.65,2.08);
+    \node[lab,anchor=west,text=hw] at (7.98,1.86) {SM};
+    \node[lab,anchor=east,text=hw] at (14.42,1.86) {Shared memory / registers};
+    \node[membox,minimum width=1.9cm,minimum height=.57cm,font=\scriptsize] (tiles) at (9.18,1.24) {Q / K / V tiles};
+    \node[workbox,minimum width=3.2cm,minimum height=.68cm,font=\scriptsize] (online) at (12.73,1.24) {Update running row max,\\sum and output};
+    \draw[flow,draw=mem] (fqkv.south)--(tiles.north);
+    \draw[flow,draw=mem] (tiles)--(online);
+    \draw[flow,draw=mem] (online.east)--(14.56,1.24)--(14.56,2.38)--(13.2,2.38)--(fo.south);
+    \node[lab,anchor=west] at (7.75,.22) {No full $N\times N$ score / probability buffer in HBM.};
+  \end{diagram}
+  \takeaway{Same dense attention, less memory traffic. The arithmetic remains quadratic in sequence length.}
+  \credit{https://arxiv.org/abs/2205.14135}{Dao et al. · FlashAttention (2022), Fig. 1 and Algorithm 1 · schematic data flow; evaluation order and rounding can differ}
+  \note{Attention을 여러 연산으로 나누면 Q와 K의 곱으로 만든 큰 점수 행렬을 HBM에 쓰고, softmax가 다시 읽은 뒤 결과를 또 씁니다. 토큰 수가 N이면 이 중간 행렬은 N 곱하기 N으로 커집니다. 계산보다 메모리를 오가는 일이 부담이 됩니다.
+
+  FlashAttention은 작은 타일만 SM의 가까운 저장 공간으로 가져옵니다. 행별 최댓값과 합, 출력의 중간값을 갱신하는 방식으로 softmax를 이어 계산해, 거대한 점수와 확률 행렬을 HBM에 통째로 만들지 않습니다. 기본 FlashAttention은 attention을 희소화하거나 근사한 방법이 아닙니다. 같은 dense attention을 다른 순서로 평가하므로 반올림 차이는 있을 수 있고, 연산량 자체가 N 제곱이라는 점도 남습니다. 하드웨어의 메모리 계층에 맞춰 알고리즘을 다시 짠 사례입니다.}
+\end{frame}
+
+\begin{frame}[label=app-packaging]{TSMC connects dies sideways and stacks them vertically}
+  \begin{diagram}{4.45}
+    \node[anchor=west,font=\small\bfseries] at (0,4.17) {CoWoS: integrate logic + HBM in a package};
+    \node[anchor=west,font=\small\bfseries] at (8.12,4.17) {SoIC: dense vertical die-to-die bonds};
+    \draw[plainbox,rounded corners=0pt] (.1,.99) rectangle (7.57,1.42);
+    \node[font=\scriptsize] at (3.835,1.20) {Package substrate};
+    \draw[plainbox,rounded corners=0pt,fill=muted!13] (.35,1.73) rectangle (7.32,2.12);
+    \node[font=\scriptsize] at (3.835,1.93) {Silicon interposer · CoWoS-S example};
+    \foreach \x in {.7,1.1,...,7.1} \fill[muted!55] (\x,1.58) circle (.05);
+    \foreach \x in {.8,1.6,...,7.2} \fill[muted!55] (\x,.76) circle (.09);
+    \draw[hwbox,rounded corners=0pt] (2.57,2.39) rectangle (5.04,3.28);
+    \node[font=\small,text=hw] at (3.805,2.835) {Logic die};
+    \foreach \xbase in {.52,5.54} {
+      \foreach \y in {2.4,2.66,2.92,3.18} \draw[membox,rounded corners=0pt] (\xbase,\y) rectangle ++(1.54,.21);
+      \foreach \dx in {.3,.65,1.0,1.3} \draw[mem,line width=1pt] ({\xbase+\dx},2.22)--({\xbase+\dx},3.39);
+    }
+    \node[font=\scriptsize,text=mem] at (1.29,3.64) {HBM + TSVs};
+    \node[font=\scriptsize,text=mem] at (6.31,3.64) {HBM + TSVs};
+    \foreach \x in {2.78,3.1,...,4.9} \draw[hw,line width=.6pt] (\x,2.17)--(\x,2.37);
+    \node[lab,text width=7.35cm,align=left,anchor=west] at (.12,.12)
+      {CoWoS-R: RDL. CoWoS-L: local silicon links + RDL.\\Schematic; sizes and layer counts are illustrative.};
+    \draw[hwbox,rounded corners=0pt] (8.8,2.67) rectangle (13.95,3.36);
+    \node[font=\small] at (11.375,3.015) {Top die / chiplets};
+    \foreach \x in {9.0,9.2,...,13.8} \draw[hw,line width=1.2pt] (\x,2.43)--(\x,2.65);
+    \draw[hwbox,rounded corners=0pt] (8.8,1.72) rectangle (13.95,2.40);
+    \node[font=\small] at (11.375,2.06) {Base die};
+    \draw[flow] (14.6,2.54)--(13.6,2.54);
+    \node[lab,anchor=east] at (14.6,1.38) {Fine-pitch bonds · not the HBM DRAM stack};
+    \node[lab,text width=6.4cm,align=left,anchor=west] at (8.12,.35)
+      {Can be combined with CoWoS.\\Constraints: tested dies, bonding yield, heat and package size.};
+  \end{diagram}
+  \takeaway{Compute, memory, interconnect, power and cooling must work as one physical assembly.}
+  \credit{}{\href{https://3dfabric.tsmc.com/english/dedicatedFoundry/technology/cowos.htm}{TSMC · CoWoS-S/R/L} · \href{https://3dfabric.tsmc.com/english/dedicatedFoundry/technology/SoIC.htm}{TSMC · SoIC} · \href{https://investor.tsmc.com/sites/ir/annual-report/2024/2024\%20Annual\%20Report_E.pdf}{TSMC 2024 Annual Report · 3DIC thermal development}}
+  \note{GPU와 HBM을 가깝게 놓으려면 실제로 연결하고 전원을 넣고 열도 빼야 합니다. 왼쪽 CoWoS는 계산 다이와 HBM을 하나의 패키지에 통합합니다. 그중 S 방식은 실리콘 interposer로 연결하고, R과 L은 재배선층이나 국소 실리콘 연결을 사용해 구성과 크기를 확장합니다. HBM 내부의 세로선은 메모리 층을 관통하는 TSV입니다.
+
+  오른쪽 SoIC는 별도의 다이들을 아주 촘촘한 접합으로 수직 연결하는 기술입니다. HBM의 DRAM 적층과 같은 이름으로 부르는 것은 아니며, CoWoS와 함께 사용할 수도 있습니다. 정상인 다이를 골라 조립해도 접합 수율, 발열, 전력과 패키지 크기를 해결해야 합니다. 이제 칩 성능은 트랜지스터만 작게 만드는 문제가 아니라 여러 부품을 한 시스템으로 조립하는 문제이기도 합니다.}
+\end{frame}
+
+\section{Appendix · Linux and deployment}
+\begin{frame}[label=app-linux]{Torvalds wanted Linux to be a supported platform}
+  \begin{diagram}{4.55}
+    \node[anchor=west,font=\scriptsize\bfseries,text=work] at (0,4.22) {2012 · THE OPTIMUS QUESTION};
+    \node[plainbox,minimum width=6.25cm,minimum height=.85cm,font=\small] (linux) at (3.15,3.25)
+      {Linux users and maintainers};
+    \node[plainbox,minimum width=6.25cm,minimum height=.85cm,font=\small] (vendor) at (3.15,1.45)
+      {Vendor-controlled driver support};
+    \draw[flow,<->] (linux.south)--node[right,lab,align=left] {Integration, debugging,\\hybrid-graphics support} (vendor.north);
+    \node[lab,anchor=west] at (0,.38) {The dispute concerned support and cooperation.};
+    \draw[line] (7.05,.15)--(7.05,4.4);
+    \node[anchor=west,font=\scriptsize\bfseries,text=hw] at (7.65,4.22) {2022 / 2024 · WHICH LAYER OPENED?};
+    \node[plainbox,minimum width=6.65cm,minimum height=.65cm,font=\small] (userdriver) at (10.98,3.3)
+      {NVIDIA user-space driver · separate binaries};
+    \node[workbox,minimum width=6.65cm,minimum height=.8cm,font=\small] (module) at (10.98,2.15)
+      {GPU kernel modules · GPL / MIT source};
+    \node[plainbox,minimum width=6.65cm,minimum height=.65cm,font=\small] (firmware) at (10.98,1.0)
+      {GPU firmware · separate component};
+    \draw[flow] (userdriver)--(module); \draw[flow] (module)--(firmware);
+    \node[lab,anchor=west] at (7.65,.28) {R515: source release · R560: wider default adoption};
+  \end{diagram}
+  \takeaway{Fast hardware also needs maintainable operating-system integration.}
+  \credit{}{\href{https://www.youtube.com/watch?v=MShbP3OpASA&t=2900s}{Aalto / Linus Torvalds · June 2012, Q\&A}
+    \quad \href{https://developer.nvidia.com/blog/nvidia-releases-open-source-gpu-kernel-modules/}{NVIDIA · R515 (2022)}
+    \quad \href{https://developer.nvidia.com/blog/nvidia-transitions-fully-towards-open-source-gpu-kernel-modules/}{R560 (2024)}}
+  \note{유명한 장면은 2012년 Aalto 대학 대담에서 나왔습니다. 한 사용자가 노트북의 Optimus 그래픽을 Linux에서 쓰기 어려웠던 경험을 물었고, 토발즈는 NVIDIA의 Linux 지원과 커뮤니티 협력 태도를 강하게 비판했습니다. GPU가 빠른가와 사용자가 운영체제에서 안정적으로 쓸 수 있는가는 별개의 문제였던 것입니다.
+
+  이후 상황도 구분해야 합니다. NVIDIA는 2022년 R515에서 GPU 커널 모듈의 소스를 공개했고, 2024년 R560에서는 지원되는 GPU의 기본 선택을 이쪽으로 옮겼습니다. 오른쪽의 가운데 층이 공개된 부분입니다. 사용자 공간 드라이버와 펌웨어는 별도로 남아 있어, 전체 CUDA 스택이 공개됐다는 뜻은 아닙니다. 소스 공개와 Linux 본류에 통합되는 것도 같은 일은 아닙니다. 하드웨어를 실제 서비스에 쓰려면 이런 운영체제 경계까지 해결해야 합니다.}
+\end{frame}
+
+\begin{frame}[label=app-container-image]{A GPU container carries the application environment}
+  \begin{diagram}{4.5}
+    \node[workbox,minimum width=5.0cm,minimum height=3.2cm] at (2.6,2.45) {};
+    \node[anchor=west,font=\small\bfseries,text=work] at (.4,3.65) {ONE VERSIONED IMAGE};
+    \foreach \yy/\label in {2.95/{Application + Python packages},2.1/{Framework + CUDA libraries},1.25/{User-space OS dependencies}} {
+      \node[workbox,fill=white,minimum width=4.45cm,minimum height=.55cm,font=\scriptsize] at (2.6,\yy) {\label};
+    }
+    \draw[flow] (5.25,2.45)--(6.25,2.45);
+    \draw[flow] (6.25,2.45)|-(7.1,3.25);
+    \draw[flow] (6.25,2.45)|-(7.1,1.45);
+    \foreach \yy/\label in {3.25/{Development machine},1.45/{Cluster worker}} {
+      \node[hwbox,minimum width=7.4cm,minimum height=1.25cm,font=\small] at (10.83,\yy)
+        {\textbf{\label}\\Compatible GPU + host driver + container runtime};
+    }
+    \node[lab,anchor=west] at (.1,.3) {The host need not install each application's CUDA Toolkit and Python environment.};
+  \end{diagram}
+  \takeaway{Package the user space once; deploy it on compatible GPU hosts.}
+  \credit{}{\href{https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/1.10.0/concepts.html}{NVIDIA Container Toolkit · Concepts}
+    \quad \href{https://docs.nvidia.com/deploy/cuda-compatibility/why-cuda-compatibility.html}{CUDA Compatibility}}
+  \note{GPU 컨테이너가 편리한 이유는 애플리케이션 환경을 함께 옮길 수 있기 때문입니다. Python 패키지와 프레임워크, CUDA 사용자 라이브러리를 이미지에 묶습니다. 개발 머신에서 맞춘 환경을 클러스터에서도 같은 이미지로 실행할 수 있고, 작업마다 필요한 라이브러리 버전이 달라도 호스트 전체를 그 버전에 맞춰 다시 설치할 필요가 줄어듭니다.
+
+  다만 이미지 안에 실제 GPU까지 들어가는 것은 아닙니다. 실행할 호스트에는 호환되는 GPU와 드라이버, GPU 연결을 설정한 컨테이너 실행 환경이 있어야 합니다. CPU 아키텍처와 커널에 필요한 GPU 기능도 맞아야 합니다. 환경을 재현하고 배포하는 단위가 생긴 것이 핵심이며, 모든 하드웨어에서 같은 속도나 완전히 같은 수치 결과를 보장하는 것은 아닙니다. 그러면 이미지 밖의 GPU에는 어떻게 닿을까요?}
+\end{frame}
+
+\begin{frame}[label=app-container-driver]{The container reaches the GPU through the host driver}
+  \begin{diagram}{4.55}
+    \foreach \xx/\name in {3.55/{Training container},11.1/{Serving container}} {
+      \draw[workbox] (\xx-3.35,2.65) rectangle (\xx+3.35,4.4);
+      \node[font=\small\bfseries,text=work] at (\xx,4.08) {\name};
+      \node[font=\small] at (\xx,3.58) {App + framework + CUDA runtime};
+      \node[plainbox,minimum width=5.85cm,minimum height=.45cm,inner sep=2pt,font=\scriptsize] at (\xx,2.99)
+        {Access to driver libraries and selected device nodes};
+      \draw[flow] (\xx,2.63)--(\xx,1.99);
+    }
+    \node[plainbox,minimum width=14.25cm,minimum height=.7cm,font=\small] (host) at (7.33,1.62)
+      {\textbf{Shared host Linux kernel + NVIDIA kernel driver}};
+    \foreach \xx/\id in {3.55/0,11.1/1} {
+      \node[hwbox,minimum width=5.35cm,minimum height=.65cm,font=\small] (gpu\id) at (\xx,.45) {Physical GPU \id};
+      \draw[flow] (\xx,1.26)--(gpu\id.north);
+    }
+    \node[lab,fill=white,inner sep=2pt] at (7.33,2.32) {Container Toolkit / CDI configures access};
+  \end{diagram}
+  \takeaway{Containers isolate application environments; GPU access still crosses a shared driver boundary.}
+  \credit{}{\href{https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/cdi-support.html}{NVIDIA Container Toolkit · CDI}
+    \quad \href{https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/arch-overview.html}{Architecture}
+    \quad \href{https://docs.nvidia.com/deploy/cuda-compatibility/why-cuda-compatibility.html}{Driver compatibility}}
+  \note{위의 두 컨테이너는 자기 애플리케이션과 CUDA 런타임을 갖지만, 아래의 Linux 커널과 GPU 커널 드라이버는 호스트의 것을 사용합니다. Container Toolkit과 CDI 같은 연결 장치가 선택한 GPU의 장치 파일과 필요한 드라이버 라이브러리에 접근하도록 실행 환경을 구성합니다. 컨테이너가 GPU를 소프트웨어로 흉내 내는 것이 아니라 실제 장치에 작업을 제출하는 것입니다.
+
+  그래서 호스트 드라이버와 컨테이너의 CUDA 요구 조건은 여전히 맞아야 합니다. 그림에서는 GPU를 따로 배정했지만 컨테이너 개수만큼 GPU가 생기는 것은 아닙니다. 같은 GPU를 공유하면 연산과 메모리를 두고 경쟁할 수 있고, 강한 하드웨어 분할이나 사용량 관리는 별도 기능과 정책이 필요합니다. 이 경계를 연결했기 때문에 환경을 이미지로 배포하면서 실제 GPU 가속도 사용할 수 있게 된 것입니다.}
 \end{frame}
 
 \end{document}

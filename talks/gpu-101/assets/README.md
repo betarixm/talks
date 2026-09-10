@@ -200,3 +200,40 @@ footer가 crop 밖에 있으므로 사용하는 슬라이드에 강의명, PDF U
 - Reading note: 원본에서 “pixel”이라고 축약해 표현하는 부분은 발표에서
   fragment와 최종 pixel의 차이를 설명한다. 코드 상세를 설명하려면 넓게
   배치하고, 개념 설명만 필요하다면 덱의 자체 코드·도식이 더 읽기 쉽다.
+
+## Appendix references
+
+아래 자료는 2026-09-10에 확인했다. 어펜딕스 그림은 자체 TikZ 도식이며 외부
+이미지 추출·crop은 없다. 반복 유닛 수, 배선, 스케줄은 별도 표시가 없으면
+설명용 예시이고, 공급사 간 마케팅 성능 비교를 재현하지 않는다.
+
+### Other accelerator ecosystems: AMD, HIP, TPU, NPUs, Cerebras
+
+- AMD: [Q2 2017 results](https://ir.amd.com/news-events/press-releases/detail/779/amd-reports-second-quarter-2017-financial-results)는 Instinct와 ROCm 1.6의 동시 제공 사례다. ROCm이 2017년에 처음 등장했다는 뜻은 아니다. [CDNA white paper](https://www.amd.com/content/dam/amd/en/documents/instinct-business-docs/white-papers/amd-cdna-white-paper.pdf), PDF pp. 2–7은 GCN 기반 연산부, 2020년 CDNA의 행렬 실행부와 ROCm 발전의 근거다. [CDNA architecture](https://www.amd.com/en/technologies/cdna.html)는 2026년 칩렛·HBM 구조를 뒷받침한다.
+- HIP: [What is HIP?](https://rocm.docs.amd.com/projects/HIP/en/latest/what_is_hip.html), [FAQ](https://rocm.docs.amd.com/projects/HIP/en/latest/faq.html). C++ 커널 언어·호스트 API와 HIPIFY를 통한 소스 이식, 수동 수정·재빌드·튜닝을 구분한다. CUDA 바이너리 호환을 주장하지 않는다. 현재 문서는 AMD 타깃을 강조하며, [6.1.2 문서](https://rocm.docs.amd.com/projects/HIP/en/docs-6.1.2/)의 NVIDIA 타깃 설명을 무조건적인 최신 지원 약속으로 옮기지 않는다.
+- TPU: [Jouppi et al., ISCA 2017](https://research.google/pubs/in-datacenter-performance-analysis-of-a-tensor-processing-unit/)의 첫 세대 추론 목적과 [Google Cloud architecture](https://docs.cloud.google.com/tpu/docs/system-architecture-tpu-vm), [JAX AI stack](https://docs.cloud.google.com/tpu/docs/jax-ai-stack)을 참고했다. JAX→XLA는 대표 경로이고 JAX/XLA가 TPU 전용이라는 뜻은 아니다. 배열은 선택한 행렬 경로이며 전체 칩이나 실제 Pod 배치를 재현하지 않는다.
+- 추론 NPU 사례: [Furiosa SDK 2026.2](https://furiosa.ai/blog/furiosa-sdk-2026-2), [RNGD 발표](https://furiosa.ai/blog/rngd-hot-chips-press-release), [Rebellions Inference Platform](https://rebellions.ai/rebellions-product/rebellions-inference-platform/), [Optimum RBLN](https://github.com/RBLN-SW/optimum-rbln/blob/main/README.md). 컴파일러·모델 지원·서빙 스택의 역할을 참고한다. 두 회사는 추론에 집중한 예이며 모든 NPU가 같은 구조이거나 추론 전용이라고 일반화하지 않는다.
+- Cerebras: [WSE-3 발표](https://www.cerebras.ai/press-release/cerebras-announces-third-generation-wafer-scale-engine), March 2024, 90만 코어·44 GB SRAM은 **WSE-3의 역사적 예시**다. [PyTorch compiler 설명](https://www.cerebras.ai/blog/supporting-pytorch-on-the-cerebras-wafer-scale-engine), April 2022와 [weight streaming](https://training-api.cerebras.ai/en/1.9.1/wsc/cerebras-basics/cerebras-execution-modes.html)을 참고했다. MemoryX는 가중치를 스트리밍하는 학습 방식으로 한정하며, 모든 모델이 SRAM에 상주하거나 모든 추론이 MemoryX를 쓴다고 설명하지 않는다.
+
+### LLM execution, distributed training, and networking
+
+- 학습 상태: [ZeRO](https://arxiv.org/abs/1910.02054), 2019/2020, §§3–4. 가중치·기울기·optimizer 상태·활성값과 분할·재계산의 절충을 참고한다. 파라미터당 보편적인 바이트 수를 가정하지 않는다.
+- 서빙: [PagedAttention](https://arxiv.org/abs/2309.06180), SOSP 2023와 [TensorRT-LLM chunked prefill](https://developer.nvidia.com/blog/streamlining-ai-inference-performance-and-deployment-with-nvidia-tensorrt-llm-chunked-prefill/), November 15, 2024. 동적인 KV 메모리 관리, 배칭, 첫 토큰·토큰 간 지연시간을 설명한다. 그림의 처리 순서는 자체 예시이며 실제 엔진 정책이나 성능 수치가 아니다.
+- 병렬화·운영: [The Llama 3 Herd of Models](https://arxiv.org/html/2407.21783v3#S3.SS3), 2024, §3.3.2/Figure 5 및 §3.3.4. 여러 병렬화 방식의 결합, 통신·체크포인트·지연 노드·복구·전력·냉각 문제를 참고한다. 모든 장애가 전체 재시작을 요구한다는 의미는 아니다.
+- 통신 계층: [NCCL overview](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/overview.html), [collectives](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/collectives.html), [NVIDIA networking](https://www.nvidia.com/en-us/networking/). NCCL 소프트웨어 요청과 NVLink/NVSwitch 및 NIC·InfiniBand/Ethernet의 물리 경로를 구분한다. NVLink 영역은 서버 또는 랙일 수 있고 BlueField가 모든 GPU 전송을 통과시키는 것은 아니다.
+- [Mellanox 인수 완료 발표](https://nvidianews.nvidia.com/news/nvidia-completes-acquisition-of-mellanox-creating-major-force-driving-next-gen-data-centers), April 27, 2020. 2019년 인수 발표와 완료 시점을 구분하며, 기존 NVLink 개발과 Mellanox 제품·역량의 결합을 설명한다.
+
+### Number formats, HBM, FlashAttention, and packaging
+
+- 숫자 형식: [Transformer Engine BF16/FP16](https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/features/low_precision_training/introduction/introduction.html), Figure 1과 [TF32 설명](https://developer.nvidia.com/blog/accelerating-ai-training-with-tf32-tensor-cores/), January 27, 2021, Figures 1–2. 비트 폭은 FP32 1/8/23, FP16 1/5/10, BF16 1/8/7이며, BF16의 지수 범위와 유효 정밀도를 구분한다. TF32는 FP32 입력을 사용하는 연산 모드로 설명하고 별도의 텐서 저장 형식처럼 표시하지 않는다.
+- 저정밀 계산: [Using FP8 and FP4](https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/examples/fp8_primer.html), [NVFP4](https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/features/low_precision_training/nvfp4/nvfp4.html), [Mixed Precision Training](https://arxiv.org/abs/1710.03740), 2017, §§2–3. 값 외의 scale 정보, 누적·민감한 계산의 정밀도와 품질 검증을 함께 다룬다. INT 양자화와 FP 형식을 구분하며 모든 연산의 무손실 교체나 고정 압축률을 주장하지 않는다.
+- HBM: [Micron HBM3E](https://www.micron.com/products/memory/hbm/hbm3e)의 1,024 data I/O는 HBM3E 스택에 한정한다. 적층·TSV·interposer는 [Inside Pascal](https://developer.nvidia.com/blog/inside-pascal/)의 역사적 사례를 참고했다. FP32 덧셈의 `12 B/element`와 가상 대역폭 `4 TB/s → 0.33 TFLOP/s`는 외부 메모리에서 두 번 읽고 한 번 쓰는 **이상적 대역폭 상한**이다. 제품 실측이나 GPU 최대 연산량이 아니며 캐시 재사용·부가 비용은 생략한다.
+- [FlashAttention](https://arxiv.org/abs/2205.14135), 2022, Figure 1, §3.1, Algorithm 1, Appendix B. 타일·온라인 softmax로 전체 score/probability 행렬을 HBM에 저장하지 않는 알고리즘을 설명한다. 같은 dense attention을 계산한다는 의미의 exact이며, 비트 단위 동일성·희소 근사·선형 연산량을 의미하지 않는다.
+- TSMC: [CoWoS](https://3dfabric.tsmc.com/english/dedicatedFoundry/technology/cowos.htm)의 S/R/L 단면, [SoIC](https://3dfabric.tsmc.com/english/dedicatedFoundry/technology/SoIC.htm), [SoIC in depth](https://3dfabric.tsmc.com/english/dedicatedFoundry/technology/SoIC_inDepth.htm). 실리콘 interposer 단면은 CoWoS-S 예시이고, R/L까지 같은 구조로 일반화하지 않는다. SoIC의 수직 die 연결과 HBM DRAM 적층을 구분한다. [2024 Annual Report](https://investor.tsmc.com/sites/ir/annual-report/2024/2024%20Annual%20Report_E.pdf)의 “3DIC and TSMC-SoIC”를 열·통합 제약의 근거로 참고하며 특정 제품 수율이나 최신 roadmap 수치를 제시하지 않는다.
+
+### Linux drivers and GPU containers
+
+- [Aalto Talk with Linus Torvalds](https://www.youtube.com/watch?v=MShbP3OpASA), June 14, 2012, 약 48–50분의 Optimus/Linux 질문. 당시 지원·협력에 대한 비판을 설명하며 현재의 개인적 감정을 대변하거나 긴 직접 인용을 사용하지 않는다.
+- NVIDIA [2022 kernel-module 공개](https://developer.nvidia.com/blog/nvidia-releases-open-source-gpu-kernel-modules/)와 [2024 open-module 전환](https://developer.nvidia.com/blog/nvidia-transitions-fully-towards-open-source-gpu-kernel-modules/), July 17, 2024. 커널 모듈 소스 공개, 지원 GPU에서의 기본값 변화, Linux upstream 포함 및 전체 CUDA 소프트웨어 공개를 구분한다. [저장소 README](https://github.com/NVIDIA/open-gpu-kernel-modules)의 모듈·GSP firmware·user-space 버전 관계도 유지한다.
+- [Container Toolkit concepts](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/1.10.0/concepts.html)의 Motivation/Background와 [CUDA compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/why-cuda-compatibility.html). 애플리케이션 user space와 호스트 드라이버를 분리하는 원리를 참고하며, 과거 문서를 현재 설치 절차로 사용하지 않는다. 이미지 이동이 하드웨어·드라이버 호환성이나 동일한 성능·수치 결과를 보장하지 않는다.
+- 현재 연결 방식: [Architecture overview](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/arch-overview.html), [CDI support](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/cdi-support.html), [prerequisites](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). 장치 노드·드라이버 구성요소를 연결하는 toolkit/runtime/CDI와 호스트 커널 드라이버의 경계를 설명한다. 예시는 일반 Linux 컨테이너와 각각 할당된 물리 GPU이며, 가시성 설정을 자동 분할·성능 격리로 표현하지 않는다.

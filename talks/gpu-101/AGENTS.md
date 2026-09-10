@@ -54,11 +54,17 @@ for talk-specific needs so other presentations retain their styling.
 - Reuse the shared `\titlepage`, `\tocframe`, and `\sectionframe` templates.
   Section dividers highlight the current section and fade surrounding ones.
 - Preserve the closing disclaimer's top title/subtitle, bottom explanation,
-  hairline, and three-column contact footer. Keep it as the final slide.
+  hairline, and three-column contact footer. Keep it as the final slide of
+  the main talk; the optional appendix follows it.
 - Preserve the intentional spoken ending: the narrative conclusion says
-  thank you, then the final slide gives the full disclaimer narration.
+  thank you, then the main talk's final slide gives the full disclaimer narration.
   The user explicitly confirmed this sequence; do not shorten or move the
   final narration to eliminate the second ending.
+- Keep the appendix optional, with a linked topic index and a return link
+  on its content pages. Group it into other accelerators, LLMs and data
+  centers, bits and data movement, and Linux and deployment. Disable the
+  main talk's automatic section dividers after `\appendix`; appendix section
+  labels must not enter the main contents page or its narration mapping.
 - When adding or reordering sections, update the Korean narration selected
   by `\AtBeginSection` and its `\ifcase` mapping in `gpu-101.tex`.
 - Give each content frame one main point. Prefer photos, assets, and diagrams
@@ -147,6 +153,9 @@ compensate for an overcrowded layout.
   Keep compilation and profiling distinct from runtime execution steps.
 - Label the `4096 × 256` launch as a teaching implementation with one element
   per thread, not PyTorch's actual optimized kernel configuration.
+- Follow that launch through scheduling, result stores, and completion without
+  detouring into one-thread or one-large-block experiments. Explain the need
+  for multiple blocks to use multiple SMs alongside block placement.
 - Distinguish logical work, resident work, execution width, and physical
   resources. Label illustrative schedules and resource-limit assumptions.
 - Scope the detailed SM diagram and residency example to RTX Blackwell (CC 12.0).
@@ -161,6 +170,23 @@ compensate for an overcrowded layout.
   and private thread register values. Shared memory is optional explicit
   staging; a warp is not another memory tier. Qualify cache paths by policy
   and architecture rather than implying every access traverses every level.
+- In the appendix, connect each accelerator's hardware choices to its
+  compiler/runtime ecosystem. HIP source portability does not imply CUDA
+  binary compatibility or equal performance. Do not treat every TPU or NPU
+  generation as the same architecture. Label the WSE-3 figures as a 2024
+  example and scope MemoryX weight streaming to training.
+- Distinguish LLM training state, serving KV state, and communication by
+  parallelism strategy. Qualify serving bottlenecks by phase and batching;
+  NVLink scale-up domains can extend beyond one server.
+- Separate floating-point range from precision, storage formats from
+  compute modes (especially TF32), and payload savings from scaling metadata.
+  Low precision needs selective use and quality validation. Label bandwidth
+  arithmetic as an ideal bound, HBM3E interface widths by generation, and
+  FlashAttention as exact attention without a bitwise-equality guarantee.
+- Distinguish CoWoS-S silicon interposers from CoWoS-R/L and SoIC vertical
+  bonding. Linux kernel-module source release does not mean all NVIDIA
+  user-space software is open source. GPU containers use a compatible host
+  driver; an image does not create a private GPU or guarantee performance.
 
 ## Assets and documentation
 
