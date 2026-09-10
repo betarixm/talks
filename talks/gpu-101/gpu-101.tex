@@ -52,7 +52,7 @@
     \node[anchor=south east,inner sep=0pt,text=muted,
       font=\fontsize{5.6}{7}\selectfont]
       at ([xshift=-\blackhpad,yshift=.96cm]current page.south east)
-      {\href{#1}{#2}};
+      {\ifstrempty{#1}{#2}{\href{#1}{#2}}};
   \end{tikzpicture}%
 }
 \newenvironment{compactitems}{\begin{itemize}
@@ -128,18 +128,18 @@
     \or
       먼저 GPU를 쓰면서 마주치는 궁금증부터 짚어보겠습니다.
     \or
-      그림 한 장을 만드는 데 어떤 반복 계산이 필요한지 보겠습니다.
+      그래픽이 원하는 계산을 어떻게 바꿨고, 그 요구에 API와 하드웨어가 어떻게 함께 발전했는지 보겠습니다.
     \or
-      이제부터 내부 구조와 프로그래밍 모델은 NVIDIA CUDA GPU를 기준으로 보겠습니다. 수많은 실행에 같은 명령을 어떻게 효율적으로 전달할까요?
+      이제 NVIDIA CUDA GPU의 실행 엔진을 구성해보겠습니다. Warp와 SM의 역할을 이해한 뒤, AI 작업의 변화가 연산과 메모리, 연결에 무엇을 요구하는지 보겠습니다.
     \or
-      이제 A와 B를 더해 C에 담는 연산으로, 사용자와 GPU가 각각 무엇을 맡는지 살펴보겠습니다.
+      CUDA 생태계가 프레임워크와 하드웨어를 연결하는 지도를 보겠습니다. 이어 A와 B를 더해 C에 담는 연산으로, 사용자와 GPU가 각각 무엇을 맡는지 따라가겠습니다.
     \fi
   }%
   \sectionframe{currentsection,sectionstyle=show/shaded,subsectionstyle=show/show/hide}%
 }
 
 \renewcommand{\gpunavigationtitle}{Contents}
-\renewcommand{\gpunavigationnote}{발표는 네 부분입니다. GPU를 이해하려는 동기에서 시작해, 그래픽이 범용 계산으로 이어진 과정을 보겠습니다. 이어서 GPU 안의 실행 엔진을 살펴보고, 마지막에는 PyTorch의 덧셈 한 줄이 그 기계에서 처리되는 과정을 따라가겠습니다.}
+\renewcommand{\gpunavigationnote}{발표는 네 부분입니다. GPU를 이해하려는 동기에서 시작해 그래픽의 요구가 셰이더와 CUDA, 하드웨어를 함께 바꾼 과정을 보겠습니다. 이어 실행 엔진과 AI 시대의 변화를 살펴보고, 마지막에는 CUDA 생태계를 거쳐 PyTorch의 덧셈 한 줄이 처리되는 과정을 따라가겠습니다.}
 \tocframe{sectionstyle=show,subsectionstyle=show/show/show}
 
 \section{Motivation}
@@ -159,7 +159,7 @@
   {\small\color{work}Pictures\quad$\longrightarrow$\quad Execution engines\quad$\longrightarrow$\quad\texttt{C = A + B}}
   \note{GPU를 쓰다 보면 nvtop을 켜서 메모리 사용량을 보거나, 모델을 올렸는데 왜 기다리는지 궁금해지는 순간이 있습니다. PyTorch나 Hugging Face에서는 몇 줄로 끝나는 작업이 아래에서는 어떻게 실행되는지도 잘 보이지 않습니다.
 
-  오늘은 VRAM에 데이터를 올리는 것과 GPU가 계산하는 것이 어떻게 연결되는지, 프레임워크의 요청 아래에서 무슨 일이 일어나는지 이해할 기본 그림을 만들겠습니다. NVIDIA가 그래픽 장치를 계산 플랫폼으로 확장한 과정도 이 그림의 출발점입니다. 먼저 많은 일을 함께 처리한다는 것이 어떤 모습인지 시연으로 보겠습니다.}
+  오늘은 VRAM에 데이터를 올리는 것과 GPU가 계산하는 것이 어떻게 연결되는지, 프레임워크의 요청 아래에서 무슨 일이 일어나는지 이해할 기본 그림을 만들겠습니다. 그래픽과 AI가 요구하는 계산이 바뀔 때 하드웨어와 소프트웨어가 어떻게 함께 발전했는지도 연결해보겠습니다. 먼저 많은 일을 함께 처리한다는 것이 어떤 모습인지 시연으로 보겠습니다.}
 \end{frame}
 
 \subsection{Parallel work in pictures}
@@ -221,41 +221,88 @@
   여기서 중요한 것은 단순히 숫자가 크다는 사실만이 아닙니다. 수면의 이 지점에서도 빛의 반사를 계산하고, 바로 옆 지점에서도 비슷한 계산을 합니다. 위치와 방향 같은 입력은 다르지만 적용할 계산법은 같을 수 있습니다. 서로 다른 위치에 대해 비슷한 계산을 아주 많이 한다는 성질이 GPU가 활용할 수 있는 병렬성의 출발점입니다.}
 \end{frame}
 
+% Fixed-function constraints motivate programmable shading.
+\begin{frame}{Richer materials needed programmable hardware}
+  \begin{diagram}{4.9}
+    \node[anchor=west,font=\scriptsize\bfseries,text=muted] at (0,4.63) {EARLY OPENGL · SETTINGS FOR FIXED-FUNCTION HARDWARE};
+    \foreach \xx/\id/\label in {1.6/v/{Transform\\+ lighting},5.2/r/{Rasterizer},8.8/f/{Texture combine\\+ fog},12.4/o/{Depth test\\+ blending}} {
+      \node[hwbox,fill=white,minimum width=2.9cm,minimum height=.8cm,inner sep=3pt,font=\small] (old\id) at (\xx,3.85) {\label};
+    }
+    \draw[flow] (oldv)--(oldr); \draw[flow] (oldr)--(oldf); \draw[flow] (oldf)--(oldo);
+    \node[lab] at (1.6,3.2) {Built-in vertex math};
+    \node[lab] at (8.8,3.2) {Built-in color rules};
+    \draw[line] (0,2.94)--(14.6,2.94);
+    \node[anchor=west,font=\scriptsize\bfseries,text=hw] at (0,2.63) {EARLY PROGRAMMABLE GPU · APPLICATION SUPPLIES PROGRAMS};
+    \node[workbox,minimum width=2.9cm,minimum height=.4cm,inner sep=3pt,font=\scriptsize] (vs) at (1.6,2.08) {Vertex shader code};
+    \node[workbox,minimum width=2.9cm,minimum height=.4cm,inner sep=3pt,font=\scriptsize] (fs) at (8.8,2.08) {Fragment shader code};
+    \foreach \xx/\id/\label in {1.6/v/{Vertex processors},8.8/f/{Fragment processors}} {
+      \draw[hwbox] (\xx-1.45,.52) rectangle (\xx+1.45,1.53);
+      \node[font=\scriptsize\bfseries,text=hw] at (\xx,1.25) {\label};
+      \foreach \unit in {0,...,3}
+        \node[hwbox,fill=hw!25,minimum width=.48cm,minimum height=.24cm,inner sep=1pt,font=\tiny] at (\xx-1.02+.68*\unit,.82) {ALU};
+    }
+    \node[hwbox,fill=white,minimum width=2.9cm,minimum height=.8cm,inner sep=3pt,font=\small] (newr) at (5.2,1.03) {Rasterizer};
+    \node[hwbox,fill=white,minimum width=2.9cm,minimum height=.8cm,inner sep=3pt,font=\small] (newo) at (12.4,1.03) {Depth test\\+ blending};
+    \draw[flow,draw=work] (vs.south)--(1.6,1.53);
+    \draw[flow,draw=work] (fs.south)--(8.8,1.53);
+    \draw[flow] (3.05,1.03)--(newr.west);
+    \draw[flow] (newr.east)--(7.35,1.03);
+    \draw[flow] (10.25,1.03)--(newo.west);
+    \node[lab,anchor=west] at (0,.1) {Pipeline order, not a floorplan · texture sampling hardware remains · output goes to the framebuffer};
+  \end{diagram}
+  \takeaway{Custom material formulas need both code and processors that can execute it.}
+  \credit{https://developer.nvidia.com/w/CgTutorial/cg_tutorial_chapter01.html}{NVIDIA · The Cg Tutorial, Chapter 1 · simplified hardware stages and illustrative unit counts}
+  \note{윗줄은 고정 기능 GPU의 주요 처리 순서입니다. 정점의 위치와 조명을 계산하고, rasterizer가 삼각형을 화면의 조각으로 펼칩니다. 텍스처를 조합하고 안개 효과를 적용한 뒤, 깊이 검사와 색 혼합을 거쳐 프레임버퍼에 기록합니다. 초기 OpenGL은 조명과 재질 같은 설정으로 준비된 연산을 제어했습니다.
+
+  수면의 물결과 반사를 원하는 방식으로 계산하려면 이 공식 자체를 바꾸고 싶어집니다. 아랫줄은 같은 단계에 프로그램을 실행하는 프로세서가 들어온 모습입니다. 파란 정점·프래그먼트 코드가 초록 실행부에 명령으로 들어갑니다. ALU는 실제 산술 계산을 하는 회로이고, 칸 수는 예시입니다.
+
+  가운데 rasterizer와 마지막 검사·혼합은 여전히 전용 하드웨어입니다. 텍스처를 읽는 장치도 남아 있습니다. 전체 파이프라인을 소프트웨어로 바꾼 것이 아니라, 일부 계산 단계에 명령을 실행할 하드웨어를 갖추고 API가 그 프로그램을 제공하게 된 것입니다. 이제 프래그먼트 단계 안으로 들어가 보겠습니다.}
+\end{frame}
+
 % Source manuscript §2.
-\begin{frame}[fragile]{A shader is a program for a graphics stage}
-  \vspace{.15cm}
+\begin{frame}[fragile]{Shader code becomes instructions for physical processors}
+  \vspace{.1cm}
   \begin{columns}[T,onlytextwidth]
-    \column{.54\textwidth}
-    \kicker{ONE FRAGMENT'S WORK}
-\begin{lstlisting}[language={},basicstyle=\ttfamily\fontsize{10.2}{17}\selectfont]
-base   = read_surface_color(uv)
-light  = max(dot(normal, light_dir), 0)
-output = base * light
+    \column{.53\textwidth}
+    \kicker{SOFTWARE · ONE FRAGMENT'S WATER SHADING}
+\begin{lstlisting}[language={},basicstyle=\ttfamily\fontsize{8.4}{16}\selectfont]
+normal = ripple_normal(uv, time)
+reflected = sample_reflection(view, normal)
+weight = reflection_weight(view, normal)
+output = mix(water_color, reflected, weight)
 \end{lstlisting}
-    \vspace{.35cm}
+    \vspace{.23cm}
     \begin{compactitems}
-      \item Programmable behavior replaces a fixed formula.
-      \item A fragment is a candidate contribution to a pixel.
+      \item The program chooses the calculation.
+      \item Each fragment supplies different inputs.
     \end{compactitems}
-    \column{.40\textwidth}
+    \column{.42\textwidth}
     \begin{tikzpicture}[x=1cm,y=1cm]
-      \node[workbox,minimum width=5.7cm,minimum height=.8cm] (p) at (2.85,3.4)
-        {\textbf{One shader program}};
-      \foreach \x in {0,...,7} \foreach \y in {0,...,3} {
-        \pgfmathtruncatemacro{\tint}{15+7*\x+4*\y}
-        \fill[work!\tint!white] (\x*.66+.24,\y*.44+.15) rectangle ++(.59,.37);
-      }
-      \draw[flow] (p.south)--(2.85,2.1);
-      \node[lab] at (2.85,-.25) {Many fragments, many input values};
+      \path[use as bounding box] (0,0) rectangle (6.0,4.6);
+      \node[workbox,minimum width=5.7cm,minimum height=.5cm,inner sep=3pt,font=\scriptsize] (code) at (3,4.3) {Compiled shader instructions};
+      \draw[hwbox] (.12,.65) rectangle (5.88,3.6);
+      \node[hwbox,fill=white,minimum width=5.15cm,minimum height=.48cm,inner sep=3pt,font=\scriptsize] (ctrl) at (3,3.13) {Instruction control};
+      \draw[flow,draw=work] (code)--(ctrl);
+      \node[membox,minimum width=5.15cm,minimum height=.5cm,inner sep=3pt,font=\scriptsize] (regs) at (3,2.28) {Registers · per-fragment values};
+      \foreach \unit in {0,...,3}
+        \node[hwbox,fill=hw!25,minimum width=.95cm,minimum height=.48cm,inner sep=2pt,font=\scriptsize] (alu\unit) at (.99+1.34*\unit,1.23) {ALU};
+      \draw[draw=work,line width=.8pt] (ctrl.west)--(.28,3.13)--(.28,.82)--(5.01,.82);
+      \foreach \unit in {0,...,3}
+        \draw[flow,draw=work] (alu\unit.south |- 0,.82)--(alu\unit.south);
+      \draw[memBorder] (.99,1.72)--(5.01,1.72);
+      \draw[memBorder] (regs.south)--(3,1.72);
+      \foreach \unit in {0,...,3}
+        \draw[memBorder] (alu\unit.north)--(alu\unit.north |- 0,1.72);
+      \node[lab] at (3,.22) {The same units process many fragments.};
     \end{tikzpicture}
   \end{columns}
-  \takeaway{Write how one surface point is shaded; apply it across the surface.}
-  \credit{https://gfxcourses.stanford.edu/cs149/fall25content/media/gpuarch/07_gpuarch.pdf}{Concept: Stanford CS149, Fall 2025 · slides 11–14 · simplified pseudocode}
-  \note{한 표면의 여러 위치에는 같은 계산을 반복하지만, 어떤 계산을 반복할지는 소재에 따라 고르고 싶습니다. 물과 벽돌의 표면색을 계산하는 방식은 다를 테니까요. 정해진 기능을 수행하던 그래픽 파이프라인의 일부를 프로그래머가 작성한 코드로 바꿀 수 있게 된 것이 프로그래머블 셰이더입니다. 셰이더는 그래픽 처리의 한 단계에서 실행되는 프로그램입니다.
+  \takeaway{Code supplies instructions; registers hold values; ALUs perform the arithmetic.}
+  \credit{https://developer.nvidia.com/w/CgTutorial/cg_tutorial_chapter01.html}{NVIDIA · The Cg Tutorial, Chapter 1 · original pseudocode and selected-resource schematic}
+  \note{셰이더는 그래픽 처리의 한 단계에서 실행되는 프로그램입니다. 삼각형을 화면에 펼친 조각인 프래그먼트마다 입력을 받아 색을 계산합니다. 이 조각은 가려짐 검사 등을 거쳐 최종 픽셀에 기여할 수 있는 후보입니다.
 
-  삼각형을 화면에 펼치면 화면 위치별로 처리할 조각, 즉 프래그먼트가 생깁니다. 여기에 프래그먼트 셰이더를 적용합니다. 이 조각은 가려짐 검사 등을 거쳐 최종 픽셀에 기여할 수 있는 후보입니다.
+  왼쪽은 물결 방향을 구하고 반사된 풍경을 읽어, 보는 각도에 따라 물의 색과 섞는 의사 코드입니다. 이 프로그램을 컴파일한 명령이 오른쪽 제어부로 들어갑니다. 제어부는 명령을 실행시키고, 레지스터에는 각 프래그먼트의 입력과 중간값이 보관됩니다. 실제 곱셈과 덧셈은 아래의 여러 ALU가 수행합니다. 텍스처 읽기 장치 등의 세부는 생략했습니다.
 
-  화면의 코드는 표면색을 읽고, 빛을 얼마나 정면으로 받는지 구한 다음, 둘을 곱합니다. 같은 표면의 여러 조각에 이 프로그램을 반복 적용합니다. 계산법은 같아도 위치별 입력이 달라 결과색은 달라집니다.}
+  파란색은 프로그램, 초록색은 실행 하드웨어, 주황색은 값의 저장 공간과 이동입니다. 프래그먼트마다 ALU를 하나씩 새로 만드는 것이 아니라 같은 실행 자원이 많은 프래그먼트를 처리합니다. 이제 GPU가 우리가 쓴 명령을 많은 데이터에 적용할 수 있다면, 그 숫자가 꼭 그림을 위한 값이어야 할까요?}
 \end{frame}
 
 % Source manuscript §3.
@@ -332,7 +379,7 @@ output = base * light
 \end{frame}
 
 % Source manuscript §5. Dates refer to architecture announcement / Toolkit.
-\begin{frame}{CUDA made compute a first-class interface}
+\begin{frame}{CUDA arrived with a more general GPU}
   \begin{diagram}{4.55}
     \node[anchor=north west,inner sep=0] at (0,4.35)
       {\includegraphics[width=4.5cm]{nvidia-1999-gpu.jpeg}};
@@ -347,11 +394,62 @@ output = base * light
       \node[anchor=west,lab] at (\x,.37) {\label};
     }
   \end{diagram}
-  \takeaway{Allocate buffers. Run a kernel. Read and write data directly.}
+  \takeaway{A compute programming model arrived with a GPU that could execute it.}
   \credit{https://www.nvidia.com/en-us/about-nvidia/corporate-timeline/}{Images / 2006: NVIDIA corporate timeline · Toolkit 1.0: NVIDIA guide, June 2007}
-  \note{이 변화를 연표로 정리해보겠습니다. 왼쪽의 1999년 GeForce 256은 그래픽 GPU의 이정표입니다. 여기서 계산 플랫폼으로 넘어가는 핵심 전환은 가운데와 오른쪽입니다. NVIDIA는 2006년에 CUDA 아키텍처를 공개했고, 2007년에는 CUDA Toolkit 1.0을 출시했습니다.
+  \note{이 우회를 없애려면 일을 요청하는 방법과 그 요청을 처리하는 장치가 함께 바뀌어야 했습니다. 왼쪽의 1999년 GeForce 256은 그래픽 GPU의 이정표입니다. 가운데 2006년에는 G80, 즉 GeForce 8800과 CUDA 아키텍처가 등장했고, 2007년에는 CUDA Toolkit 1.0이 나왔습니다.
 
-  이제 GPU 메모리에 일반 배열 버퍼를 준비하고, 그 주소를 사용해 원하는 원소를 읽거나 결과를 쓸 수 있습니다. GPU에서 실행할 프로그램을 커널이라고 하고, 그 실행을 요청하는 것을 launch라고 부릅니다. 삼각형을 그리는 절차 없이 계산을 직접 요청하는 것입니다. 정해진 범위에서 실행끼리 데이터를 공유하고 동기화하는 기능도 제공합니다. 계산을 시키는 입구와 가능한 동작이 함께 바뀐 것입니다.}
+  G80은 정점용과 픽셀용으로 나뉘던 연산 자원을 통합했습니다. 그래픽에서도 단계별 작업량이 달라질 때 자원을 더 유연하게 쓸 수 있었고, CUDA 계산에도 이 프로세서들을 활용했습니다. CUDA는 이 하드웨어에 계산 프로그램을 직접 제출하는 길을 제공했습니다. GPU에서 실행할 프로그램을 커널, 그 실행 요청을 launch라고 합니다.
+
+  단순히 새 API로 삼각형 그리기를 숨긴 것만은 아닙니다. 일반적인 메모리 읽기와 쓰기, 가까운 데이터의 재사용과 실행 간 협력을 지원하는 장치도 중요했습니다. 소프트웨어가 요청하는 일과 하드웨어가 제공하는 기능을 나란히 보겠습니다.}
+\end{frame}
+
+% CUDA software requests rely on capabilities introduced with CUDA GPUs.
+\begin{frame}{CUDA used unified processors and new memory paths}
+  \begin{diagram}{4.9}
+    \node[workbox,minimum width=6.2cm,minimum height=.5cm,inner sep=3pt,font=\small] (gfx) at (3.25,4.5) {Graphics shader programs};
+    \node[workbox,minimum width=6.4cm,minimum height=.5cm,inner sep=3pt,font=\small] (cuda) at (11.35,4.5) {Graphics programs + CUDA kernels};
+    \draw[hwbox,fill=white] (.05,.55) rectangle (6.45,3.93);
+    \draw[hwbox,fill=white] (7.95,.55) rectangle (14.75,3.93);
+    \node[font=\small\bfseries,text=hw] at (3.25,3.61) {Earlier · separate processor banks};
+    \node[font=\small\bfseries,text=hw] at (11.35,3.61) {G80 · unified within local groups};
+    \foreach \xx/\name in {1.38/Vertex,5.1/Fragment} {
+      \draw[hwbox] (\xx-1.08,1.75) rectangle (\xx+1.08,3.05);
+      \node[font=\scriptsize\bfseries] at (\xx,2.78) {\name};
+      \foreach \i in {0,...,2} \foreach \j in {0,1}
+        \draw[hwBorder,fill=hw!25] (\xx-.82+.57*\i,2.05+.28*\j) rectangle ++(.42,.18);
+    }
+    \node[hwbox,minimum width=1.05cm,minimum height=.8cm,inner sep=2pt,font=\tiny] (rast) at (3.25,2.4) {Rasterizer};
+    \draw[flow] (2.46,2.4)--(rast.west); \draw[flow] (rast.east)--(4.02,2.4);
+    \draw[flow,draw=work] (gfx.south)--(3.25,4.08)--(.17,4.08)--(.17,3.25)--(1.38,3.25)--(1.38,3.05);
+    \draw[flow,draw=work] (3.25,4.08)--(6.32,4.08)--(6.32,3.25)--(5.1,3.25)--(5.1,3.05);
+    \node[membox,minimum width=5.9cm,minimum height=.56cm,inner sep=3pt,font=\scriptsize] (oldmem) at (3.25,1.13) {Textures / render targets};
+    \draw[flow] (5.1,1.75)--(oldmem.north -| 5.1,0);
+    \foreach \grp in {0,1} {
+      \pgfmathsetmacro{\xx}{8.18+3.3*\grp}
+      \draw[hwbox] (\xx,1.47) rectangle (\xx+2.99,3.05);
+      \node[font=\scriptsize\bfseries] at (\xx+1.495,2.8) {Streaming processors};
+      \foreach \i in {0,...,3}
+        \draw[hwBorder,fill=hw!25] (\xx+.22+.66*\i,2.36) rectangle ++(.5,.18);
+      \node[membox,minimum width=2.5cm,minimum height=.27cm,inner sep=2pt,font=\tiny] (greg\grp) at (\xx+1.495,2.05) {Registers};
+      \node[membox,minimum width=2.5cm,minimum height=.27cm,inner sep=2pt,font=\tiny] (gshared\grp) at (\xx+1.495,1.65) {Shared memory};
+      \pgfmathsetmacro{\route}{8.06+6.58*\grp}
+      \draw[flow,draw=work] (cuda.south)--(11.35,4.08)--(\route,4.08)--(\route,3.25)--(\xx+1.495,3.25)--(\xx+1.495,3.05);
+      \draw[memBorder] (\xx+.47,2.25)--(\xx+2.83,2.25)--(\xx+2.83,1.17);
+      \foreach \i in {0,...,3}
+        \draw[memBorder] (\xx+.47+.66*\i,2.36)--(\xx+.47+.66*\i,2.25);
+      \draw[memBorder] (greg\grp.east)--(\xx+2.83,2.05);
+      \draw[memBorder] (gshared\grp.east)--(\xx+2.83,1.65);
+    }
+    \node[membox,minimum width=6.2cm,minimum height=.56cm,inner sep=3pt,font=\scriptsize] at (11.35,.95) {Device memory · general load / store paths};
+    \node[lab,anchor=west] at (.1,.13) {Selected resources · graphics rasterization remains · processor counts are illustrative};
+  \end{diagram}
+  \takeaway{CUDA needed executable instructions, direct data access, and local cooperation.}
+  \credit{}{NVIDIA · \href{https://www.nvidia.com/content/PDF/Geforce_8800/GeForce_8800_GPU_Architecture_Technical_Brief.pdf}{GeForce 8800 Technical Brief, pp. 12–14, 21–25} · \href{https://developer.download.nvidia.com/compute/cuda/1.0/NVIDIA_CUDA_Programming_Guide_1.0.pdf}{CUDA Guide 1.0, pp. 2–5}}
+  \note{왼쪽은 정점과 프래그먼트 프로그램을 서로 다른 프로세서 뱅크가 처리하던 모습입니다. 가운데 rasterizer가 둘을 연결합니다. 오른쪽 G80은 같은 종류의 프로세서를 그래픽의 여러 단계와 CUDA 계산에 사용할 수 있게 했습니다. 화면에 따라 정점과 픽셀 작업량이 달라지는 그래픽에도 유용한 변화였습니다.
+
+  오른쪽은 전 GPU가 하나의 자원을 공유하는 덩어리가 아닙니다. 프로세서와 레지스터, shared memory를 묶은 국소 그룹이 여러 개 있고, 장치 메모리의 일반적인 읽기와 쓰기 경로로 연결됩니다. 선은 연결 관계를 보여주며, 모든 메모리 접근이 shared memory를 거친다는 뜻은 아닙니다. CUDA 커널은 일반 배열에 결과를 쓰고 가까운 데이터를 재사용하며 실행끼리 진행을 맞출 수 있습니다.
+
+  이런 실행과 메모리 기능이 있어야 컴파일한 CUDA 명령을 처리할 수 있습니다. 따라서 CUDA 이전 GPU에 Toolkit을 설치하는 것만으로는 부족합니다. 예전에 CUDA를 지원하던 GPU가 최신 Toolkit 지원에서 빠지는 것은 별도의 버전 문제입니다. 이제 이 기계에 하는 요청을 한마디로 줄여보겠습니다.}
 \end{frame}
 
 \begin{frame}{“Run this program many times.”}
@@ -566,7 +664,7 @@ output = base * light
   \credit{https://images.nvidia.com/aem-dam/Solutions/geforce/blackwell/nvidia-rtx-blackwell-gpu-architecture.pdf}{NVIDIA RTX Blackwell whitepaper · Figure 5, pp. 10–12 · simplified and rearranged}
   \note{앞에서 모은 자원들을 가까이 묶은 실행 엔진이 SM입니다. 내부는 공식 도식이 공개된 RTX Blackwell 기준으로 보겠습니다. 바깥 테두리가 SM 하나이고, 스케줄러와 레지스터 파일, 실행 유닛을 묶은 구획 네 개를 네 열로 펼쳤습니다.
 
-  각 스케줄러는 담당 warp들의 준비된 명령을 골라 실행 자원에 공급합니다. 스케줄러 네 개가 warp 네 개를 뜻하지는 않습니다. 아래의 64 KB 레지스터 파일은 thread들의 작업값을 보관합니다. 진한 초록 칸 32개는 FP32 또는 INT32 연산을 하는 유닛으로, 한 사이클에 둘 중 한 종류를 처리합니다. 구획마다 Tensor Core 하나와 load/store 유닛 네 개도 있습니다.
+  각 스케줄러는 담당 warp들의 준비된 명령을 골라 실행 자원에 공급합니다. 스케줄러 네 개가 warp 네 개를 뜻하지는 않습니다. 아래의 64 KB 레지스터 파일은 thread들의 작업값을 보관합니다. 진한 초록 칸 32개는 FP32 또는 INT32 연산을 하는 유닛으로, 한 사이클에 둘 중 한 종류를 처리합니다. 구획마다 행렬 곱셈과 누적에 특화된 Tensor Core 하나와 load/store 유닛 네 개도 있습니다.
 
   맨 아래 128 KB L1 데이터 캐시와 shared memory는 네 구획이 함께 씁니다. 명령 캐시, dispatch, 특수 함수와 그래픽스 전용 자원은 생략했습니다. 잠시 뒤에 볼 Rubin의 내부 수치로 받아들이면 안 됩니다. 핵심은 SM 안에서도 자주 주고받는 자원을 가까이 묶는다는 점입니다. 이제 이런 SM을 여러 개 배치해 GPU 전체로 확장해보겠습니다.}
 \end{frame}
@@ -594,43 +692,200 @@ output = base * light
   \credit{https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/programming-model.html}{NVIDIA CUDA Programming Guide · GPU Hardware Model · illustrative SM count}
   \note{이제 자기 몫의 실행을 관리할 수 있는 SM을 여러 개 배치해 GPU를 키워봅시다. 각 SM은 가까운 레지스터와 실행 자원을 사용합니다. 그 바깥에는 여러 SM이 함께 사용하는 L2 캐시와 메모리 시스템이 연결되고, 오른쪽의 큰 GPU 메모리인 VRAM에는 텐서 같은 입력과 출력을 담습니다.
 
-  warp에서는 같은 명령의 제어를 함께 쓰고, SM마다 실행 상태와 연산 자원을 가까이 묶습니다. 그런 SM을 반복해서 배치하면 각각 자기 몫의 일을 진행할 수 있습니다. 실제 GPU의 전체 부품을 그린 것은 아니지만, 범용 계산을 담당하는 중심 구조를 이렇게 볼 수 있습니다. 이제 실제 칩의 예시와 연결해보겠습니다.}
+  warp에서는 같은 명령의 제어를 함께 쓰고, SM마다 실행 상태와 연산 자원을 가까이 묶습니다. 그런 SM을 반복해서 배치하면 각각 자기 몫의 일을 진행할 수 있습니다. 실제 GPU의 전체 부품을 그린 것은 아니지만, 범용 계산을 담당하는 중심 구조를 이렇게 볼 수 있습니다. 그런데 이 기계에 맡기는 계산이 달라지면, 연산과 메모리에 요구하는 것도 달라집니다. 최신 GPU를 보기 전에 그 변화를 짚어보겠습니다.}
 \end{frame}
 
-\begin{frame}{A current example: the NVIDIA Rubin GPU}
-  \begin{diagram}{4.8}
-    \draw[hwbox] (0,.25) rectangle (10.1,4.7);
-    \node[anchor=west,font=\small\bfseries,text=hw] at (.25,4.4) {One GPU package · two compute dies};
-    \foreach \d in {0,1} {
-      \pgfmathsetmacro{\dx}{.3+5.05*\d}
-      \draw[hwbox,fill=white] (\dx,1.25) rectangle (\dx+4.4,4.1);
-      \node[font=\small\bfseries,text=hw] at (\dx+2.2,3.8) {Compute die \d};
-      \foreach \x in {0,...,3} \foreach \y in {0,1}
-        \node[hwbox,minimum width=.85cm,minimum height=.5cm,font=\scriptsize] at (\dx+.62+1.05*\x,3.2-.7*\y) {SM};
-      \node[membox,minimum width=3.9cm,minimum height=.45cm,font=\scriptsize] at (\dx+2.2,1.75) {L2 cache / memory controllers};
+% Workload evolution explains specialized compute and memory hardware.
+\begin{frame}{More memory traffic changed the GPU package}
+  \begin{diagram}{4.85}
+    \node[workbox,minimum width=14.45cm,minimum height=.48cm,inner sep=3pt,font=\small] (program) at (7.35,4.55) {CUDA kernel · load inputs $\longrightarrow$ compute $\longrightarrow$ store outputs};
+    \node[font=\scriptsize\bfseries,text=muted] at (3.3,4.0) {GDDR5 · SEPARATE PACKAGES ON A BOARD};
+    \node[font=\scriptsize\bfseries,text=hw] at (11.35,4.0) {P100 · 2016 · GPU AND HBM2 IN ONE PACKAGE};
+    \draw[plainbox,fill=white] (0,.5) rectangle (6.6,3.57);
+    \draw[hwbox,fill=white] (8.05,.5) rectangle (14.65,3.57);
+    \foreach \xx/\id in {3.3/old,11.35/new} {
+      \draw[hwbox] (\xx-1.35,.92) rectangle (\xx+1.35,3.31);
+      \node[font=\scriptsize\bfseries,text=hw] at (\xx,3.03) {GPU die};
+      \foreach \i in {0,1,2}
+        \node[hwbox,fill=white,minimum width=.67cm,minimum height=.42cm,inner sep=2pt,font=\scriptsize] at (\xx-.87+.87*\i,2.58) {SM};
+      \node[membox,minimum width=2.35cm,minimum height=.36cm,inner sep=2pt,font=\scriptsize] at (\xx,1.99) {L2 cache};
+      \node[hwbox,fill=white,minimum width=2.35cm,minimum height=.5cm,inner sep=2pt,font=\scriptsize] (mc\id) at (\xx,1.32) {Memory controller};
+      \draw[draw=work,line width=.8pt] (program.south)--(7.35,3.72)--(\xx,3.72);
+      \draw[flow,draw=work] (\xx,3.72)--(\xx,3.31);
+      \draw[memBorder] (mc\id.north)--(\xx,1.81);
+      \draw[memBorder] (\xx,2.17)--(\xx,2.27);
+      \draw[memBorder] (\xx-.87,2.27)--(\xx+.87,2.27);
+      \foreach \i in {0,1,2}
+        \draw[memBorder] (\xx-.87+.87*\i,2.27)--(\xx-.87+.87*\i,2.37);
     }
-    \draw[flow,<->] (4.7,2.8)--(5.35,2.8);
-    \node[lab] at (5.05,.75) {NV-HBI connects the dies · SM count drawn is illustrative};
-    \node[anchor=west,font=\Large\bfseries,text=hw] at (10.55,4.05) {224 SMs};
-    \node[anchor=west,lab] at (10.55,3.52) {Published GPU configuration};
-    \node[membox,minimum width=3.8cm,minimum height=1.5cm,font=\small] at (12.5,2.35)
-      {\textbf{HBM4 memory}\\[.12cm]Up to 288 GB\\Up to 22 TB/s};
-    \draw[flow,<->] (10.1,2.35)--(10.6,2.35);
-    \node[anchor=west,font=\scriptsize,text=muted,align=left] at (10.55,.8)
-      {Published as of 2026-09-10\\Preliminary specifications};
+    \foreach \xx/\side/\port/\rail in {.82/left/east/1.65,5.78/right/west/4.95} \foreach \yy/\chipid in {1.45/0,2.65/1} {
+      \node[membox,minimum width=1.13cm,minimum height=.56cm,inner sep=2pt,font=\scriptsize] (chip\side\chipid) at (\xx,\yy) {GDDR5};
+      \draw[memBorder,line width=.8pt] (chip\side\chipid.\port)--(\rail,\yy)--(\rail,.7)--(3.3,.7)--(mcold.south);
+    }
+    \foreach \xx in {8.95,13.77} {
+      \foreach \layer in {0,...,3}
+        \draw[membox,inner sep=0] (\xx-.61,1.52+.17*\layer) rectangle ++(1.22,.48);
+      \node[font=\scriptsize,text=mem] at (\xx,2.24) {HBM2};
+      \foreach \wire in {0,1,2,3}
+        \draw[memBorder,line width=.7pt] (\xx,1.52)--(\xx,.69+.065*\wire)--(11.35,.69+.065*\wire)--(mcnew.south);
+    }
+    \draw[draw=line,fill=blackPrimary!8] (8.325,.54) rectangle (14.375,.65);
+    \draw[line] (11.35,.41)--(11.35,.54);
+    \node[font=\scriptsize,text=muted] at (11.35,.26) {Silicon interposer};
+    \node[lab,anchor=west] at (0,.12) {Same load / store model · schematic components and wiring};
   \end{diagram}
-  \takeaway{Even a two-die GPU connects many SMs to a shared memory system.}
-  \credit{https://developer.nvidia.com/blog/inside-nvidia-rubin-gpu-architecture-powering-the-era-of-agentic-ai/}{NVIDIA · Inside Rubin GPU Architecture · July 2026 · simplified grouping}
-  \note{여기서는 최신 공개 세대인 NVIDIA Rubin GPU의 전체 구성을 보겠습니다. 앞에서 SM 내부를 본 RTX Blackwell과는 다른 제품입니다. NVIDIA가 공개한 Rubin 구성에는 SM 224개가 있고, compute die 두 개를 NV-HBI라는 고속 연결로 묶어 하나의 GPU로 사용합니다. 그림의 SM 상자는 반복 배치를 보여주기 위한 예시이고 실제 개수를 모두 그리지는 않았습니다.
+  \takeaway{HBM widens the physical data path; kernels still need efficient access and reuse.}
+  \credit{https://developer.nvidia.com/blog/inside-pascal/}{NVIDIA · Inside Pascal (2016) · Dramatic Improvements in Memory · schematic packaging comparison}
+  \note{같은 CUDA 커널도 데이터가 도착하지 않으면 기다립니다. 왼쪽은 GPU와 GDDR5 메모리가 보드 위의 별도 패키지로 놓인 구성입니다. GPU 안의 SM이 값을 요청하면 메모리 컨트롤러와 보드의 연결을 통해 데이터를 주고받습니다.
 
-  각 다이에는 SM들과 L2 캐시, 메모리 컨트롤러가 있고, 패키지의 HBM4 메모리가 입력과 출력을 보관합니다. 공개 사양은 GPU당 최대 288 GB 용량과 초당 22 TB 대역폭입니다. 이 수치들은 2026년 9월 10일 기준의 예비 사양입니다. Rubin도 CUDA를 지원하며, 현재 CUDA 13.4에서 sm\_107 대상으로 프리뷰 지원하는 단계입니다.
+  오른쪽 P100은 여러 층으로 쌓은 HBM2를 GPU 다이와 같은 패키지에 놓습니다. 아래의 실리콘 interposer가 둘을 넓게 연결합니다. 여러 갈래로 그린 선은 더 많은 데이터를 공급하는 물리적인 연결을 표현하며 실제 비트 폭이나 층수를 재현한 것은 아닙니다. 큰 데이터를 다루는 과학 계산과 딥러닝에 필요한 대역폭을 높인 변화이고, LLM보다 먼저 사용됐습니다.
 
-  이제 GPU 하나가 반드시 실리콘 다이 하나인 것도 아닙니다. 그래도 여러 SM을 메모리 시스템에 연결한다는 앞의 구조를 확인할 수 있습니다. 그러면 이 여러 SM에 일을 나누는 것은 누구의 몫일까요?}
+  맨 위 프로그램은 두 경우 모두 입력을 읽고 계산하고 결과를 씁니다. HBM 전용 CUDA 명령으로 바꿔 쓰는 것은 아닙니다. 하드웨어는 데이터 공급 경로를 넓히고, 커널은 효율적인 접근과 재사용으로 그 대역폭을 활용합니다. 이제 데이터를 받은 뒤 계산하는 회로와 명령 경로도 어떻게 달라졌는지 보겠습니다.}
+\end{frame}
+
+\begin{frame}{Matrix kernels gained a new physical execution path}
+  \begin{diagram}{4.9}
+    \node[anchor=west,font=\small\bfseries,text=work] at (.1,4.62) {MATRIX MULTIPLY + ACCUMULATE · $D = A \times B + C$};
+    \node[workbox,minimum width=6.5cm,minimum height=.58cm,inner sep=3pt,font=\small] (oldcode) at (3.35,3.9) {GEMM kernel · repeated multiply-adds};
+    \node[workbox,minimum width=6.5cm,minimum height=.58cm,inner sep=3pt,font=\small] (newcode) at (11.35,3.9) {CUDA 9 · library or WMMA kernel};
+    \node[font=\scriptsize,text=work] (oldinst) at (3.35,3.29) {FMA instructions: $d \leftarrow a \times b + d$};
+    \node[font=\scriptsize,text=work] (newinst) at (11.35,3.29) {Matrix multiply-accumulate instructions};
+    \draw[flow,draw=work] (oldcode)--(oldinst);
+    \draw[flow,draw=work] (newcode)--(newinst);
+    \foreach \xx/\generation in {3.35/Pascal,11.35/Volta} {
+      \draw[hwbox,fill=white] (\xx-3.25,.53) rectangle (\xx+3.25,2.91);
+      \node[anchor=west,font=\scriptsize\bfseries,text=hw] at (\xx-3.02,2.65) {\generation\ SM · selected resources};
+      \node[membox,minimum width=5.9cm,minimum height=.36cm,inner sep=2pt,font=\scriptsize] (reg\generation) at (\xx,2.09) {Registers · operands and accumulated values};
+    }
+    \foreach \i in {0,...,5}
+      \node[hwbox,fill=hw!25,minimum width=.75cm,minimum height=.42cm,inner sep=2pt,font=\scriptsize] (alu\i) at (.82+1.01*\i,1.09) {ALU};
+
+    \foreach \i in {0,...,2}
+      \node[hwbox,fill=hw!15,minimum width=.65cm,minimum height=.42cm,inner sep=2pt,font=\tiny] at (8.55+.82*\i,1.09) {ALU};
+    \node[hwbox,fill=white,minimum width=3.1cm,minimum height=.83cm,inner sep=0pt] (tc) at (12.92,1.09) {};
+    \foreach \xx in {12.11,13.73}
+      \node[hwbox,fill=hw!25,minimum width=1.3cm,minimum height=.62cm,inner sep=1pt,font=\tiny] at (\xx,1.09) {Tensor\\Core};
+    \draw[draw=work,line width=.8pt] (oldinst.west)--(.03,3.29)--(.03,.69)--(5.87,.69);
+    \foreach \i in {0,...,5}
+      \draw[flow,draw=work] (alu\i.south |- 0,.69)--(alu\i.south);
+    \draw[flow,draw=work] (newinst.east)--(14.75,3.29)--(14.75,1.09)--(tc.east);
+    \draw[memBorder] (.82,1.54)--(5.87,1.54); \draw[memBorder] (regPascal.south)--(3.35,1.54);
+    \foreach \i in {0,...,5} \draw[memBorder] (alu\i.north)--(alu\i.north |- 0,1.54);
+    \draw[memBorder] (regVolta.south)--(11.35,1.64);
+    \draw[memBorder] (8.55,1.64)--(12.92,1.64)--(tc.north);
+    \foreach \i in {0,...,2} \draw[memBorder] (8.55+.82*\i,1.64)--(8.55+.82*\i,1.3);
+    \node[font=\tiny,text=muted] at (9.38,.71) {Ordinary ALUs remain};
+    \node[lab,anchor=west] at (.1,.13) {Example: FP16 matrix inputs, FP32 accumulation · illustrative unit counts · instruction throughput is not shown};
+  \end{diagram}
+  \takeaway{Tensor-aware kernels and instructions use added matrix hardware.}
+  \credit{https://developer.nvidia.com/blog/programming-tensor-cores-cuda-9/}{NVIDIA · Programming Tensor Cores in CUDA 9 (2017) · Pascal FMA and Volta Tensor Core paths}
+  \note{같은 행렬 곱셈은 왼쪽 GPU도 수행합니다. 커널이 곱셈과 덧셈을 반복하고 일반 ALU들이 FMA, 즉 곱한 뒤 누적하는 명령을 처리합니다. 오른쪽 Volta에는 행렬의 작은 타일을 곱하고 누적하는 Tensor Core와 데이터 경로가 추가됐습니다. 일반 ALU도 남아 있습니다.
+
+  새 회로를 추가했다고 기존 커널이 자동으로 이를 사용하는 것은 아닙니다. CUDA 9의 cuBLAS·cuDNN 라이브러리 구현이나 WMMA 행렬 연산 인터페이스를 쓰는 커널이 지원되는 명령 경로를 사용합니다. 이 예시는 FP16 입력과 FP32 누적입니다. 지원하는 자료형과 행렬 조건에 맞는 구현이 필요하고, 단순 반복문이 항상 Tensor Core 명령으로 바뀌는 것은 아닙니다.
+
+  파란 코드와 명령의 경로가 달라지고, 초록색 실행 회로도 달라졌습니다. 주황색 레지스터의 입력과 결과가 새 연산 경로로 오갑니다. 이것이 CUDA와 GPU가 함께 발전한 구체적인 모습입니다. 원소별 A 더하기 B는 여전히 일반 산술 경로로 이해할 수 있습니다. 그러면 언어 모델을 실행할 때는 어떤 자원이 더 필요할까요?}
+\end{frame}
+
+\begin{frame}{Generating text adds a growing state to reuse}
+  \begin{diagram}{4.7}
+    \foreach \x/\id/\txt in {2.15/p/{Read the prompt},7.3/t/{Generate a token},12.45/n/{Generate the next}} {
+      \node[workbox,minimum width=4.2cm,minimum height=.75cm,font=\small] (\id) at (\x,4.02) {\txt};
+    }
+    \draw[flow] (p)--(t); \draw[flow] (t)--(n);
+    \node[membox,minimum width=5.8cm,minimum height=.75cm,font=\small] (weights) at (3.05,2.48) {Model weights};
+    \node[membox,minimum width=7.4cm,minimum height=.75cm,font=\small] (kv) at (10.82,2.48) {KV cache · saved attention state};
+    \draw[line,line width=.8pt] (2.15,3.2)--(12.45,3.2);
+    \foreach \stage in {p,t,n}
+      \draw[flow,<->] (\stage.south)--(\stage.south |- 0,3.2);
+    \draw[flow] (weights.north)--(weights.north |- 0,3.2);
+    \draw[flow,<->] (kv.north)--(kv.north |- 0,3.2);
+    \node[anchor=west,font=\small] at (.05,1.47) {Longer context + more requests $\longrightarrow$ more stored state};
+    \node[anchor=west,font=\small] at (.05,.93) {Generating tokens $\longrightarrow$ repeated access to weights and state};
+    \node[anchor=west,font=\small] at (.05,.39) {A model spread across GPUs $\longrightarrow$ communication};
+  \end{diagram}
+  \takeaway{The bottleneck depends on the model, batch size, and execution phase.}
+  \credit{https://developer.nvidia.com/blog/mastering-llm-techniques-inference-optimization/}{NVIDIA · Mastering LLM Techniques: Inference Optimization · prefill, decode, and KV cache}
+  \note{언어 모델은 입력을 읽은 뒤, 앞에서 만든 결과를 바탕으로 다음 토큰을 계속 생성합니다. 입력을 한꺼번에 처리하는 단계와 토큰을 이어 만드는 단계는 기계를 사용하는 방식이 다릅니다.
+
+  모델 가중치 외에도 이전 토큰에서 계산한 attention용 값을 보관해 다시 쓰는데, 이것이 KV cache입니다. L1처럼 하드웨어에 붙은 캐시 이름이 아니라 프로그램이 저장하는 데이터입니다. 재계산을 줄이는 대신 메모리 용량과 읽기 대역폭을 사용합니다. 문맥이 길고 동시 요청이 많아지면 이 상태도 커집니다. 특히 작은 배치로 토큰을 생성할 때는 계산량에 비해 읽어야 할 데이터가 많아질 수 있습니다.
+
+  모델을 여러 GPU에 나누면 중간 결과를 교환하는 시간도 생깁니다. 따라서 AI는 언제나 메모리가 병목이라고 단정할 수 없습니다. 모델, 배치 크기, 실행 단계에 따라 연산과 메모리, 통신의 비중이 달라집니다. 이제 Rubin을 보면 각 부품이 어떤 요구를 해결하려는지 연결할 수 있습니다.}
+\end{frame}
+
+\begin{frame}{Rubin scales compute, memory, and communication}
+  \begin{diagram}{4.8}
+    \draw[hwbox] (0,1.12) rectangle (14.65,4.75);
+    \node[anchor=west,font=\small\bfseries,text=hw] at (.25,4.43) {Rubin GPU package · 224 SMs across two compute dies};
+    \node[anchor=east,font=\tiny,text=muted] at (14.4,4.43) {Preliminary · 2026-09-10};
+    \foreach \die in {0,1} {
+      \pgfmathsetmacro{\dx}{.3+4.5*\die}
+      \draw[hwbox,fill=white] (\dx,1.83) rectangle (\dx+3.5,4.1);
+      \node[font=\scriptsize\bfseries,text=hw] at (\dx+1.75,3.87) {Compute die \die};
+      \foreach \x in {0,...,2} \foreach \y in {0,1}
+        \node[hwbox,minimum width=.9cm,minimum height=.4cm,inner sep=2pt,font=\scriptsize] at (\dx+.58+1.14*\x,3.38-.55*\y) {SM};
+      \node[membox,minimum width=3.12cm,minimum height=.36cm,inner sep=3pt,font=\scriptsize] (mem\die) at (\dx+1.75,2.19) {L2 / memory controllers};
+    }
+    \node[circle,fill=workLight,draw=workBorder,text=work,font=\scriptsize\bfseries,inner sep=2pt] at (.65,3.87) {1};
+    \draw[flow,<->] (3.8,2.95)--(4.8,2.95);
+    \node[font=\tiny,text=muted] at (4.3,3.25) {NV-HBI};
+    \node[membox,minimum width=5.35cm,minimum height=2.2cm,font=\small] (hbm) at (11.72,2.95)
+      {\textbf{HBM4 memory}\\[.12cm]Up to 288 GB · keep weights + state\\[.12cm]Up to 22 TB/s · feed execution};
+    \node[circle,fill=memLight,draw=memBorder,text=mem,font=\scriptsize\bfseries,inner sep=2pt] at (9.4,3.76) {2};
+    \draw[memBorder,line width=.8pt] (2.05,1.68)--(11.72,1.68);
+    \foreach \die in {0,1}
+      \draw[memBorder,line width=.8pt] (mem\die.south)--(mem\die.south |- 0,1.68);
+    \draw[memBorder,line width=.8pt] (11.72,1.68)--(hbm.south);
+    \node[hwbox,minimum width=2.65cm,minimum height=.48cm,font=\scriptsize] (others) at (13.23,.46) {Other GPUs};
+    \draw[flow,<->] (7.35,1.12)--(7.35,.46)--node[above,lab,align=center]{\textcolor{work}{\textbf{3}~Communication work}\\NVLink 6} (others.west);
+    \node[lab,anchor=west,align=left] at (.05,.48) {\textcolor{work}{\textbf{1}~Matrix / attention kernels $\rightarrow$ SMs}\\\textcolor{mem}{\textbf{2}~Weights + KV buffers $\rightarrow$ HBM}};
+  \end{diagram}
+  \takeaway{The workload shapes the arithmetic, storage, and connections together.}
+  \credit{https://developer.nvidia.com/blog/inside-nvidia-rubin-gpu-architecture-powering-the-era-of-agentic-ai/}{NVIDIA · Inside Rubin GPU Architecture · July 2026 · SM counts, wiring, and software mappings are schematic}
+  \note{Rubin에서 프로그램과 하드웨어를 연결해보겠습니다. 1번 행렬·attention 커널은 SM에서 실행합니다. 두 compute die에 걸쳐 224개 SM이 일을 나눕니다. Tensor Core뿐 아니라 attention의 참고 비중을 정규화하는 softmax 처리도 강화했습니다. 그림의 SM 상자 수는 예시입니다.
+
+  2번 가중치와 KV 버퍼는 HBM에 보관합니다. 최대 288 GB는 상태를 얼마나 담을 수 있는지, 최대 초당 22 TB는 데이터를 얼마나 빨리 공급하는지입니다. 3번 GPU 간 통신 작업은 NVLink 같은 연결을 사용합니다. 두 다이를 한 GPU로 묶는 NV-HBI와 GPU 사이의 NVLink 6는 연결 범위가 다릅니다.
+
+  수치는 2026년 9월 10일 기준 공개 예비 사양이고, CUDA 13.4의 Rubin 지원은 sm\_107 프리뷰입니다. 앞서 본 RTX Blackwell의 SM 내부 수치를 그대로 적용하면 안 됩니다. GPU가 처리하는 일과 데이터가 바뀌면서 하드웨어와 커널, 라이브러리가 함께 발전합니다. 이제 이 기능들이 우리가 쓰는 코드와 연결되는 생태계를 보겠습니다.}
 \end{frame}
 
 % Source manuscript §10–11.
 \section{Following A + B}
 \subsection{From tensors to threads}
+% A platform map before following one educational kernel implementation.
+\begin{frame}{CUDA connects frameworks to the hardware}
+  \begin{diagram}{4.8}
+    \node[plainbox,minimum width=10.75cm,minimum height=.65cm,font=\small] (framework) at (5.42,4.36)
+      {Hugging Face Transformers $\longrightarrow$ PyTorch tensor operations};
+    \node[plainbox,minimum width=5.2cm,minimum height=1.45cm,font=\scriptsize] (libs) at (2.65,2.87)
+      {\textbf{Optimized libraries}\\[.07cm]cuBLAS · linear algebra\\cuDNN · neural-network operations\\NCCL · multi-GPU communication};
+    \node[workbox,minimum width=5.2cm,minimum height=1.45cm,font=\scriptsize] (kernels) at (8.18,2.87)
+      {\textbf{Framework / custom kernels}\\[.12cm]Existing or generated implementations\\e.g., CUDA C++ / Triton};
+    \draw[flow] (framework.south)--(5.42,3.82)-|(libs.north);
+    \draw[flow] (5.42,3.82)-|(kernels.north);
+    \node[plainbox,minimum width=10.75cm,minimum height=.65cm,font=\small] (runtime) at (5.42,1.43)
+      {CUDA runtime / driver APIs · allocate memory and submit work};
+    \draw[flow] (libs.south)--(libs.south |- runtime.north);
+    \draw[flow] (kernels.south)--(kernels.south |- runtime.north);
+    \node[hwbox,minimum width=10.75cm,minimum height=.65cm,font=\small] (gpu) at (5.42,.38)
+      {NVIDIA GPU · SMs, Tensor Cores, memory, interconnects};
+    \draw[flow] (runtime)--(gpu);
+    \draw[line] (11.12,0)--(11.12,4.73);
+    \node[anchor=west,font=\small\bfseries] at (11.5,4.28) {Build};
+    \node[anchor=west,lab,align=left] at (11.5,3.67) {Compilers\\e.g., nvcc};
+    \node[anchor=west,font=\small\bfseries] at (11.5,2.55) {Measure};
+    \node[anchor=west,lab,align=left] at (11.5,1.62) {Nsight Systems\\Application timeline\\[.12cm]Nsight Compute\\Individual kernels};
+  \end{diagram}
+  \takeaway{Libraries, kernels, compilers, and tools make hardware capabilities usable.}
+  \credit{https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/cuda-platform.html}{NVIDIA CUDA platform and libraries · PyTorch / Hugging Face docs · example execution paths}
+  \note{Hugging Face Transformers로 모델을 실행해도 PyTorch를 쓰는 경로에서는 텐서 연산 요청으로 내려갑니다. 구현은 연산과 실행 조건에 따라 달라집니다.
+
+  왼쪽의 cuBLAS는 선형대수, cuDNN은 신경망 연산, NCCL은 GPU 사이의 통신을 제공합니다. 이들을 모두 순서대로 거치는 것은 아닙니다. 오른쪽처럼 프레임워크가 가진 커널이나 직접 작성하고 생성한 커널을 쓸 수도 있습니다. 런타임과 드라이버 API는 메모리 준비와 실행 제출을 연결합니다.
+
+  옆의 nvcc는 실행할 코드를 만드는 컴파일러입니다. 매 연산마다 반드시 컴파일한다는 뜻은 아닙니다. Nsight Systems는 프로그램 전체의 시간 흐름을, Nsight Compute는 개별 커널을 들여다봅니다. 하드웨어의 새 기능을 사용자 코드의 성능으로 연결하려면 이런 구현과 도구도 함께 발전해야 합니다.
+
+  이제 큰 지도에서 원소별 덧셈 하나를 골라 따라가겠습니다. A 더하기 B가 이 라이브러리들을 모두 호출하는 것은 아닙니다.}
+\end{frame}
+
 \begin{frame}{Describe the work; the GPU places it}
   \begin{diagram}{4.2}
     \node[workbox,minimum width=5.7cm,minimum height=2.1cm] (request) at (2.95,2.5)
@@ -1157,14 +1412,14 @@ add<<<1, 1>>>(device_a, device_b, device_c, 1);
     \fill[work!18] (0,.85)--(4.5,3.35)--(4.5,.85)--cycle;
     \draw[work,line width=1pt] (0,.85) rectangle (4.5,3.35);
     \draw[work,line width=1pt] (0,.85)--(4.5,3.35);
-    \node[font=\small,align=center] at (2.25,2.05) {Draw this rectangle.\\Add A and B as its colors.};
+    \node[font=\small,align=center,fill=workLight,inner sep=4pt] at (2.25,2.05) {Draw this rectangle.\\Add A and B as its colors.};
     \draw[flow] (5.25,2.08)--(7.05,2.08);
     \node[anchor=west,font=\fontsize{25}{30}\selectfont\ttfamily] at (8.1,2.08) {C = A + B};
   \end{diagram}
   \takeaway{The constant idea: apply the same computation to many inputs.}
   \note{처음의 삼각형 두 개로 돌아왔습니다. 예전에는 이 사각형을 그려달라고 말하면서, 각 위치의 색은 A와 B를 더해서 정하라고 해야 했습니다. 지금은 프레임워크에서 A와 B를 더해 C에 담아달라고 요청하면 됩니다.
 
-  그 사이에 GPU가 활용하던 성질 자체가 사라진 것은 아닙니다. 많은 데이터에 같은 계산을 적용한다는 일은 계속 같았습니다. 달라진 것은 계산을 시키기 위해 그림을 그리는 척할 필요가 없어졌고, 그 일을 표현하고 실행하는 체계가 갖춰졌다는 점입니다. 오늘 본 thread와 block, warp와 SM은 그 한 줄과 실제 계산기를 연결하는 언어입니다. GPU를 다음에 사용하실 때 이 구조를 떠올릴 수 있으면 좋겠습니다. 감사합니다.}
+  그 사이에 GPU가 활용하던 성질 자체가 사라진 것은 아닙니다. 많은 데이터에 같은 계산을 적용한다는 일은 계속 같았습니다. 달라진 것은 계산을 시키기 위해 그림을 그리는 척할 필요가 없어졌고, 그 일을 표현하는 도구와 실제로 처리하는 하드웨어가 함께 발전했다는 점입니다. AI가 요구하는 행렬 계산과 데이터 이동은 Tensor Core와 HBM 같은 자원의 발전으로도 이어졌습니다. CUDA의 라이브러리와 컴파일러는 그 기능을 사용자의 코드에 연결합니다. 오늘 본 thread와 block, warp와 SM은 그 한 줄과 실제 계산기를 연결하는 언어입니다. GPU를 다음에 사용하실 때 이 구조를 떠올릴 수 있으면 좋겠습니다. 감사합니다.}
 \end{frame}
 
 % Closing layout follows exploit-bench.tex: top title/subtitle, bottom disclaimer,

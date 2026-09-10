@@ -8,6 +8,16 @@ user's current instructions when they change the choices recorded here.
 - Read `gpu-101.md` and the relevant frames in `gpu-101.tex` before changing
   the narrative. Preserve the manuscript's progression from graphics to
   general-purpose compute, the execution engine, and the `A + B` example.
+- Explain transitions through the work that motivates them: configurable
+  fixed-function graphics to material-specific shader programs; graphics-based
+  GPGPU to G80 hardware and CUDA together; then HPC/AI workloads to matrix
+  execution, memory supply, and communication. Introduce the limitations of
+  fixed-function graphics before the shader definition and use water shading
+  to illustrate the freedom to choose a calculation.
+- Keep the G80/CUDA historical hardware/software transition separate from the
+  later warp-first design thought experiment. Distinguish pre-CUDA hardware
+  lacking CUDA execution features from an older CUDA-capable GPU no longer
+  supported by a newer toolkit.
 - Build the execution-engine story from warps to the resources they need:
   register files, execution state, schedulers, and execution units. Then
   propose one giant GPU-wide pool, show its data and control connection
@@ -21,6 +31,11 @@ user's current instructions when they change the choices recorded here.
 - Preserve the requested extensions: host-to-device input transfer,
   cache/register access, optional shared-memory staging, contents, section
   dividers, and the closing disclaimer.
+- After constructing the GPU from SMs, explain HPC/deep-learning memory and
+  matrix demands, then LLM state and communication needs before presenting
+  Rubin. Connect each hardware feature to the work it serves. Introduce the
+  CUDA ecosystem at the start of the `A + B` section, then follow one teaching
+  kernel path. Carry the hardware/software co-evolution into the conclusion.
 - Keep visible slides in English and spoken narration in Korean `\note`.
   Include notes on title, contents, section-divider, and closing pages too.
   Write natural narration that explains the figure and connects adjacent
@@ -49,6 +64,19 @@ for talk-specific needs so other presentations retain their styling.
 - Give each content frame one main point. Prefer photos, assets, and diagrams
   when they explain the point well. Use ordinary bullets for concise facts
   or constraints; do not force prose into elaborate cards.
+- Make hardware/software changes visible through comparisons of code paths,
+  physical processing units, and memory connections. Align the before/after
+  graphics stages; connect shader instructions to program control and show
+  registers beside repeated arithmetic units. Labels saying the hardware
+  evolved are not a substitute for these diagrams.
+- Compare separate pre-G80 vertex/pixel processor banks with repeated G80
+  local processor groups, each with registers and shared memory, plus general
+  load/store paths. Do not depict unification as one GPU-wide resource pool.
+- Keep the GDDR5/HBM package comparison separate from the Pascal/Volta matrix
+  comparison. Show board memory versus on-package stacks/interposer in the
+  former, and kernels/instructions connected to ordinary arithmetic versus
+  added Tensor Core datapaths in the latter. Map Rubin kernels, buffers,
+  and communication to the relevant hardware rather than a specification list.
 
 ## Semantic palette
 
@@ -88,6 +116,30 @@ compensate for an overcrowded layout.
 
 - Present the SM construction as a design thought experiment, not the
   literal historical order of GPU invention.
+- Fixed-function OpenGL had configurable lighting, textures, and multipass
+  techniques. Do not claim it could only draw simple surfaces or that shaders
+  first appeared with OpenGL 2.0; that release promoted prior extensions.
+- Scope the full fixed T&L pipeline to the GeForce 256 era and full early
+  vertex/fragment programmability to the GeForce FX era. Retain specialized
+  rasterization and depth/blend stages. Do not add modern L1/L2 data caches
+  to the early G80 compute diagram.
+- Use P100/HBM2 and Volta/Tensor Cores as distinct historical responses to
+  memory supply and matrix-computation demands. HBM predates LLMs; Tensor
+  Cores accelerate supported matrix operations rather than every operation
+  on a tensor. Distinguish capacity, bandwidth, and access latency.
+- HBM changes physical memory supply while ordinary CUDA loads/stores remain;
+  do not claim it requires a new software interface. Volta's matrix example
+  uses supported FP16 inputs/FP32 accumulation through suitable kernels and
+  instruction paths. Ordinary ALUs remain, and scalar FMA loops do not
+  automatically become Tensor Core operations. Do not equate one WMMA call
+  with one physical instruction or one clock cycle.
+- Explain KV cache as software-managed attention state. Qualify LLM
+  bottlenecks by model, batch size, and execution phase. Distinguish NV-HBI
+  between Rubin dies from NVLink between GPUs.
+- In the ecosystem view, libraries and framework/generated/custom kernels
+  are alternative implementation paths. Do not imply every operation calls
+  cuBLAS/cuDNN/NCCL or that all ecosystem libraries ship in the base Toolkit.
+  Keep compilation and profiling distinct from runtime execution steps.
 - Label the `4096 × 256` launch as a teaching implementation with one element
   per thread, not PyTorch's actual optimized kernel configuration.
 - Distinguish logical work, resident work, execution width, and physical
